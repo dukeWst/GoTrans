@@ -45,15 +45,15 @@
           <h3 class="font-bold text-lg mb-4 text-emerald-400">Liên hệ</h3>
           <ul class="space-y-3 text-sm text-slate-300">
             <li class="flex items-start gap-3">
-              <span class="mt-1 text-slate-500">📍</span>
+              <MapPin />
               <span>Tầng 12, Tòa nhà Bitexco, Q.1, TP. Hồ Chí Minh</span>
             </li>
             <li class="flex items-center gap-3">
-              <span class="text-slate-500">📞</span>
-              <span class="font-mono text-white">1900 6868</span>
+              <Phone />
+              <span class="font-mono text-white">0984 099 061</span>
             </li>
             <li class="flex items-center gap-3">
-              <span class="text-slate-500">✉️</span>
+              <Mail />
               <span>support@gotrans.vn</span>
             </li>
           </ul>
@@ -66,13 +66,17 @@
         <p class="text-xs text-slate-500">© 2025 GoTrans Inc. All rights reserved.</p>
 
         <div class="flex gap-6">
-          <a href="#" class="text-slate-400 hover:text-white transition"
+          <a
+            href="https://www.facebook.com/duke7925"
+            class="text-slate-400 hover:text-white transition"
             ><FacebookIcon class="w-5 h-5"
           /></a>
-          <a href="#" class="text-slate-400 hover:text-white transition"
+          <a
+            href="https://www.instagram.com/duke.nd_/"
+            class="text-slate-400 hover:text-white transition"
             ><InstagramIcon class="w-5 h-5"
           /></a>
-          <a href="#" class="text-slate-400 hover:text-white transition"
+          <a href="https://x.com/NguynHn792005" class="text-slate-400 hover:text-white transition"
             ><TwitterIcon class="w-5 h-5"
           /></a>
         </div>
@@ -82,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { Facebook, Instagram, Twitter } from 'lucide-vue-next'
+import { Facebook, Instagram, Mail, MapIcon, MapPin, Phone, Twitter } from 'lucide-vue-next'
 // Alias icons để dùng trong template
 const FacebookIcon = Facebook
 const InstagramIcon = Instagram

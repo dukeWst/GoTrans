@@ -1,7 +1,3 @@
-<template>
-  <router-view />
-</template>
-
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { supabase } from '@/supabase'
@@ -10,23 +6,35 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 onMounted(() => {
-  // Lắng nghe sự thay đổi của Auth (Đăng nhập, Đăng xuất, Refresh Token...)
-  supabase.auth.onAuthStateChange((event, session) => {
-    // Nếu người dùng đăng xuất (SIGNED_OUT), đá về trang login
-    if (event === 'SIGNED_OUT') {
-      router.push('/login')
-    }
+  // --- CẤU HÌNH THỜI GIAN ---
+  // Thời gian chờ tối thiểu (1.5 giây)
+  const MIN_LOAD_TIME = 1500
 
-    // Nếu vừa đăng nhập thành công (SIGNED_IN), đá về dashboard (tuỳ chọn)
-    // Lưu ý: Logic này có thể xung đột với router guard nếu không kiểm soát kỹ,
-    // nhưng thường dùng để xử lý redirect sau khi verify email/phone.
-    if (event === 'SIGNED_IN' && router.currentRoute.value.path === '/login') {
+  const loader = document.getElementById('app-loading-overlay')
+
+  if (loader) {
+    // Dùng setTimeout để giữ màn hình trắng + vòng quay lâu hơn
+    setTimeout(() => {
+      // 1. Bắt đầu làm mờ
+      loader.style.opacity = '0'
+
+      // 2. Xóa khỏi DOM sau khi hiệu ứng mờ kết thúc (0.5s khớp với CSS)
+      setTimeout(() => {
+        loader.remove()
+        document.body.style.overflow = 'auto' // Trả lại thanh cuộn
+      }, 500)
+    }, MIN_LOAD_TIME)
+  }
+
+  // --- LOGIC AUTH ---
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') router.push('/login')
+    if (event === 'SIGNED_IN' && router.currentRoute.value.path === '/login')
       router.push('/dashboard')
-    }
   })
 })
 </script>
 
-<style scoped>
-/* Global styles nếu cần */
-</style>
+<template>
+  <router-view />
+</template>
