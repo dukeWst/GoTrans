@@ -1,50 +1,81 @@
 <script setup lang="ts">
-import Logo from '@/assets/logo.vue'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { signInWithEmailAndPassword } from 'firebase/auth'
+import { auth } from '@/firebase'
+
+const router = useRouter()
+
+const email = ref('')
+const password = ref('')
+const loading = ref(false)
+const error = ref('')
+
+const handleLogin = async () => {
+  error.value = ''
+  try {
+    loading.value = true
+    await signInWithEmailAndPassword(auth, email.value, password.value)
+    router.push('/dashboard')
+  } catch (err: any) {
+    error.value = 'Email hoặc mật khẩu không đúng'
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-    <div class="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
-      <div class="flex flex-col gap-0 items-center">
-        <RouterLink to="/">
-          <Logo />
-        </RouterLink>
-        <h2 class="text-2xl font-bold text-center text-gray-800">Đăng nhập</h2>
+  <div class="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+    <!-- LEFT -->
+    <div class="flex flex-col justify-center px-10 lg:px-20 bg-white">
+      <div class="max-w-md w-full">
+        <div class="mb-12">
+          <h1 class="text-4xl font-bold text-gray-900">Đăng nhập GoTrans</h1>
+          <p class="text-gray-500 mt-3">Chào mừng quay lại</p>
+        </div>
 
-        <p class="text-sm text-center text-gray-500 mt-1">Chào mừng quay lại GoTrans</p>
+        <form class="space-y-7" @submit.prevent="handleLogin">
+          <div>
+            <label class="text-sm text-gray-600">Email</label>
+            <input
+              v-model="email"
+              type="email"
+              class="w-full border-b border-gray-300 py-2 outline-none focus:border-sky-500"
+            />
+          </div>
+
+          <div>
+            <label class="text-sm text-gray-600">Mật khẩu</label>
+            <input
+              v-model="password"
+              type="password"
+              class="w-full border-b border-gray-300 py-2 outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
+
+          <button
+            :disabled="loading"
+            class="w-full bg-gradient-to-r from-emerald-500 to-sky-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
+          >
+            {{ loading ? 'Đang đăng nhập...' : 'Đăng nhập' }}
+          </button>
+        </form>
+
+        <p class="mt-10 text-sm text-gray-500">
+          Chưa có tài khoản?
+          <RouterLink to="/register" class="text-emerald-600 hover:underline"> Đăng ký </RouterLink>
+        </p>
       </div>
-      <form class="mt-6 space-y-4">
-        <div>
-          <label class="text-sm font-medium">Email</label>
-          <input
-            type="email"
-            class="mt-1 w-full bg-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="Nhập email"
-          />
-        </div>
+    </div>
 
-        <div>
-          <label class="text-sm font-medium">Mật khẩu</label>
-          <input
-            type="password"
-            class="mt-1 w-full bg-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="Nhập mật khẩu"
-          />
-        </div>
-
-        <button
-          class="w-full bg-emerald-600 text-white py-2 rounded-lg font-medium hover:bg-emerald-700 transition"
-        >
-          Đăng nhập
-        </button>
-      </form>
-
-      <p class="text-center text-gray-600 mt-6 text-sm">
-        Chưa có tài khoản?
-        <RouterLink to="/register" class="text-emerald-600 font-medium hover:underline">
-          Đăng ký ngay
-        </RouterLink>
-      </p>
+    <!-- RIGHT ART -->
+    <div
+      class="hidden lg:flex items-center justify-center bg-gradient-to-br from-sky-500 via-teal-500 to-emerald-500"
+    >
+      <h2 class="text-4xl font-bold text-white">GoTrans Dashboard</h2>
     </div>
   </div>
 </template>

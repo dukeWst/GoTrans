@@ -21,10 +21,8 @@
           <h3 class="mt-4 font-semibold text-lg">{{ step.title }}</h3>
           <p class="text-slate-600 mt-1">{{ step.desc }}</p>
 
-          <!-- step indicator -->
           <div
-            class="absolute top-1/2 w-3 h-3 rounded-full bg-emerald-500 transform -translate-y-1/2"
-            :class="index === 0 ? 'left-10' : index === 2 ? 'right-10' : ''"
+            class="absolute top-1/2 left-1/2 w-3 h-3 rounded-full bg-emerald-500 -translate-x-1/2 -translate-y-1/2"
           ></div>
         </div>
       </div>

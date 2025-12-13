@@ -21,7 +21,21 @@ const router = createRouter({
       name: 'register',
       component: AuthSignUp,
     },
+    {
+      path: '/dashboard',
+      component: Dashboard,
+      meta: { requiresAuth: true },
+    },
   ],
+})
+
+router.beforeEach((to, _, next) => {
+  const user = auth.currentUser
+  if (to.meta.requiresAuth && !user) {
+    next('/login')
+  } else {
+    next()
+  }
 })
 
 export default router
