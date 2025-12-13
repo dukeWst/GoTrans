@@ -1,24 +1,90 @@
 <template>
-  <footer id="contact" class="bg-slate-900 text-slate-100">
-    <div class="container mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div>
-        <div class="font-bold text-lg">GoTrans</div>
-        <div class="text-sm text-slate-400 mt-2">Địa chỉ: Hà Nội / Hồ Chí Minh (ví dụ)</div>
+  <footer class="bg-slate-900 text-white pt-16 pb-8 border-t border-slate-800">
+    <div class="container mx-auto px-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
+        <div class="space-y-4">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+            </div>
+            <span class="text-xl font-bold tracking-tight">GoTrans</span>
+          </div>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Nền tảng vận chuyển thông minh, kết nối khách hàng và tài xế với chi phí tối ưu nhất.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-lg mb-4 text-emerald-400">Dịch vụ</h3>
+          <ul class="space-y-3 text-sm text-slate-300">
+            <li><a href="#" class="hover:text-white transition">Chuyển nhà trọn gói</a></li>
+            <li><a href="#" class="hover:text-white transition">Chuyển văn phòng</a></li>
+            <li><a href="#" class="hover:text-white transition">Taxi tải chở hàng</a></li>
+            <li><a href="#" class="hover:text-white transition">Hoàn trả mặt bằng</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-lg mb-4 text-emerald-400">Hỗ trợ</h3>
+          <ul class="space-y-3 text-sm text-slate-300">
+            <li><a href="#" class="hover:text-white transition">Trung tâm trợ giúp</a></li>
+            <li><a href="#" class="hover:text-white transition">Chính sách bảo mật</a></li>
+            <li><a href="#" class="hover:text-white transition">Điều khoản sử dụng</a></li>
+            <li><a href="#" class="hover:text-white transition">Liên hệ hợp tác</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-lg mb-4 text-emerald-400">Liên hệ</h3>
+          <ul class="space-y-3 text-sm text-slate-300">
+            <li class="flex items-start gap-3">
+              <span class="mt-1 text-slate-500">📍</span>
+              <span>Tầng 12, Tòa nhà Bitexco, Q.1, TP. Hồ Chí Minh</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="text-slate-500">📞</span>
+              <span class="font-mono text-white">1900 6868</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="text-slate-500">✉️</span>
+              <span>support@gotrans.vn</span>
+            </li>
+          </ul>
+        </div>
       </div>
-      <div>
-        <div class="font-semibold">Hỗ trợ</div>
-        <ul class="mt-2 text-sm text-slate-400 space-y-1">
-          <li>hotline: 1900-0000</li>
-          <li>email: hello@gotrans.vn</li>
-        </ul>
-      </div>
-      <div>
-        <div class="font-semibold">Kết nối</div>
-        <div class="mt-2 text-sm text-slate-400">Facebook · Zalo · Instagram</div>
+
+      <div
+        class="border-t border-slate-800 pt-8 flex flex-col md:flex-row items-center justify-between gap-4"
+      >
+        <p class="text-xs text-slate-500">© 2025 GoTrans Inc. All rights reserved.</p>
+
+        <div class="flex gap-6">
+          <a href="#" class="text-slate-400 hover:text-white transition"
+            ><FacebookIcon class="w-5 h-5"
+          /></a>
+          <a href="#" class="text-slate-400 hover:text-white transition"
+            ><InstagramIcon class="w-5 h-5"
+          /></a>
+          <a href="#" class="text-slate-400 hover:text-white transition"
+            ><TwitterIcon class="w-5 h-5"
+          /></a>
+        </div>
       </div>
     </div>
-    <div class="text-center text-xs text-slate-500 py-3">© 2025 GoTrans</div>
   </footer>
 </template>
 
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { Facebook, Instagram, Twitter } from 'lucide-vue-next'
+// Alias icons để dùng trong template
+const FacebookIcon = Facebook
+const InstagramIcon = Instagram
+const TwitterIcon = Twitter
+</script>

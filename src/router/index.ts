@@ -9,29 +9,57 @@ import DashboardView from '@/dashboard/DashboardView.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/', component: HomeView },
-    { path: '/login', component: AuthLogin },
-    { path: '/register', component: AuthSignUp },
-    { path: '/verify-phone', component: VerifyPhone },
-    { path: '/dashboard', component: DashboardView, meta: { requiresAuth: true } },
+    {
+      path: '/',
+      component: HomeView,
+      // THÊM DÒNG NÀY: Đánh dấu trang chủ cũng chỉ dành cho khách
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/login',
+      component: AuthLogin,
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/register',
+      component: AuthSignUp,
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/verify-phone',
+      component: VerifyPhone,
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/dashboard',
+      component: DashboardView,
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
-router.beforeEach(async (to, _, next) => {
-  if (!to.meta.requiresAuth) {
-    next()
-    return
-  }
-
+router.beforeEach(async (to, _from, next) => {
+  // Lấy session hiện tại từ Supabase
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session) {
+  // 1. Logic bảo vệ trang Dashboard (requiresAuth)
+  // Nếu trang yêu cầu đăng nhập mà chưa có session -> Đá về Login
+  if (to.meta.requiresAuth && !session) {
     next('/login')
-  } else {
-    next()
+    return
   }
+
+  // 2. Logic điều hướng trang Khách (guestOnly)
+  // Nếu trang chỉ dành cho khách (Home, Login, Register) mà ĐÃ CÓ session -> Đá thẳng vào Dashboard
+  if (to.meta.guestOnly && session) {
+    next('/dashboard')
+    return
+  }
+
+  // 3. Các trường hợp còn lại -> Cho phép truy cập bình thường
+  next()
 })
 
 export default router

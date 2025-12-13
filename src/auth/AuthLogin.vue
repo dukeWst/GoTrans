@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue' // Thêm onMounted
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
 import { X } from 'lucide-vue-next'
@@ -11,8 +11,18 @@ const phone = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const rememberMe = ref(false) // State cho checkbox lưu mật khẩu
 
-// Hàm chuẩn hóa số điện thoại (Giống bên SignUp)
+// Khi trang vừa load, kiểm tra xem có thông tin đã lưu không
+onMounted(() => {
+  const savedPhone = localStorage.getItem('gotrans_saved_phone')
+  if (savedPhone) {
+    phone.value = savedPhone
+    rememberMe.value = true
+  }
+})
+
+// Hàm chuẩn hóa số điện thoại
 const formatPhone = (phoneStr: string) => {
   let cleaned = phoneStr.replace(/\D/g, '')
   if (cleaned.startsWith('0')) {
@@ -34,7 +44,14 @@ const login = async () => {
   try {
     loading.value = true
 
-    // 1. Format số điện thoại trước khi gửi
+    // Xử lý logic Ghi nhớ đăng nhập
+    if (rememberMe.value) {
+      localStorage.setItem('gotrans_saved_phone', phone.value)
+    } else {
+      localStorage.removeItem('gotrans_saved_phone')
+    }
+
+    // 1. Format số điện thoại
     const formattedPhone = formatPhone(phone.value)
 
     // 2. Gọi Supabase Login
@@ -45,10 +62,9 @@ const login = async () => {
 
     if (loginError) throw loginError
 
-    // 3. Thành công -> Vào dashboard
+    // 3. Thành công
     router.push('/dashboard')
   } catch (err: any) {
-    // Xử lý thông báo lỗi cho thân thiện
     if (err.message.includes('Invalid login credentials')) {
       error.value = 'Sai số điện thoại hoặc mật khẩu.'
     } else {
@@ -80,6 +96,7 @@ const login = async () => {
               v-model="phone"
               type="tel"
               placeholder="0912 345 678"
+              autocomplete="username"
               class="w-full border-b border-gray-300 py-2 outline-none focus:border-sky-500 transition"
             />
           </div>
@@ -90,10 +107,28 @@ const login = async () => {
               v-model="password"
               type="password"
               placeholder="••••••••"
+              autocomplete="current-password"
               class="w-full border-b border-gray-300 py-2 outline-none focus:border-emerald-500 transition"
             />
           </div>
 
+          <div class="flex items-center justify-between">
+            <label class="flex items-center cursor-pointer">
+              <input
+                v-model="rememberMe"
+                type="checkbox"
+                class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span class="ml-2 text-sm text-gray-600">Lưu thông tin</span>
+            </label>
+
+            <a
+              href="#"
+              class="text-sm font-medium text-emerald-600 hover:text-emerald-500 hover:underline"
+            >
+              Quên mật khẩu?
+            </a>
+          </div>
           <p v-if="error" class="text-red-500 text-sm italic">{{ error }}</p>
 
           <button

@@ -9,11 +9,12 @@ import {
   User,
   LogOut,
   Truck,
-  MapPin,
   Bell,
   Plus,
   ChevronRight,
+  Settings,
 } from 'lucide-vue-next'
+import Logo from '@/assets/Logo.vue'
 
 const router = useRouter()
 const user = ref<any>(null)
@@ -72,9 +73,10 @@ const handleLogout = async () => {
   <div class="min-h-screen bg-gray-50 flex font-sans text-slate-800">
     <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col fixed h-full z-10">
       <div class="p-8">
-        <h1 class="text-2xl font-extrabold text-emerald-600 flex items-center gap-2">
-          <Truck class="w-8 h-8" /> GoTrans
-        </h1>
+        <RouterLink to="/" class="text-2xl font-extrabold text-emerald-600 flex items-center gap-2">
+          <Logo />
+          <span>GoTrans</span>
+        </RouterLink>
       </div>
 
       <nav class="flex-1 px-4 space-y-2">
@@ -104,6 +106,13 @@ const handleLogout = async () => {
         </a>
       </nav>
 
+      <a
+        href="#"
+        class="flex items-center gap-3 px-8 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
+      >
+        <Settings class="w-5 h-5" /> Cài đặt
+      </a>
+
       <div class="p-4 border-t border-gray-100">
         <button
           @click="handleLogout"
@@ -130,11 +139,6 @@ const handleLogout = async () => {
               class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
             ></span>
           </button>
-          <div
-            class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-700 font-bold border-2 border-white shadow-sm"
-          >
-            {{ user?.user_metadata?.full_name?.charAt(0) || 'U' }}
-          </div>
         </div>
       </header>
 
