@@ -2,19 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
-import {
-  LayoutDashboard,
-  Package,
-  History,
-  User,
-  LogOut,
-  Truck,
-  Bell,
-  Plus,
-  ChevronRight,
-  Settings,
-} from 'lucide-vue-next'
-import Logo from '@/assets/Logo.vue'
+import { Package, Truck, Plus, ChevronRight } from 'lucide-vue-next'
 
 const router = useRouter()
 const user = ref<any>(null)
@@ -62,83 +50,17 @@ onMounted(async () => {
   user.value = session.user
   loading.value = false
 })
-
-const handleLogout = async () => {
-  await supabase.auth.signOut()
-  router.push('/login')
-}
 </script>
 
 <template>
   <div class="min-h-screen bg-gray-50 flex font-sans text-slate-800">
-    <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col fixed h-full z-10">
-      <div class="p-8">
-        <RouterLink to="/" class="text-2xl font-extrabold text-emerald-600 flex items-center gap-2">
-          <Logo />
-          <span>GoTrans</span>
-        </RouterLink>
-      </div>
-
-      <nav class="flex-1 px-4 space-y-2">
-        <a
-          href="#"
-          class="flex items-center gap-3 px-4 py-3 bg-emerald-50 text-emerald-700 rounded-xl font-medium transition"
-        >
-          <LayoutDashboard class="w-5 h-5" /> Tổng quan
-        </a>
-        <a
-          href="#"
-          class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
-        >
-          <Package class="w-5 h-5" /> Đơn hàng
-        </a>
-        <a
-          href="#"
-          class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
-        >
-          <History class="w-5 h-5" /> Lịch sử
-        </a>
-        <a
-          href="#"
-          class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
-        >
-          <User class="w-5 h-5" /> Tài khoản
-        </a>
-      </nav>
-
-      <a
-        href="#"
-        class="flex items-center gap-3 px-8 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
-      >
-        <Settings class="w-5 h-5" /> Cài đặt
-      </a>
-
-      <div class="p-4 border-t border-gray-100">
-        <button
-          @click="handleLogout"
-          class="flex items-center gap-3 px-4 py-3 w-full text-left text-red-500 hover:bg-red-50 rounded-xl font-medium transition"
-        >
-          <LogOut class="w-5 h-5" /> Đăng xuất
-        </button>
-      </div>
-    </aside>
-
-    <main class="flex-1 md:ml-64 p-6 lg:p-10">
+    <main class="flex-1 md:ml-64 p-6 lg:p-10 w-300">
       <header class="flex justify-between items-center mb-10">
         <div>
           <h2 class="text-2xl font-bold text-slate-900">
             Xin chào, {{ user?.user_metadata?.full_name || 'Khách hàng' }} 👋
           </h2>
           <p class="text-slate-500 mt-1">Chào mừng quay trở lại với GoTrans.</p>
-        </div>
-
-        <div class="flex items-center gap-4">
-          <button class="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 relative">
-            <Bell class="w-6 h-6 text-slate-600" />
-            <span
-              class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
-            ></span>
-          </button>
         </div>
       </header>
 

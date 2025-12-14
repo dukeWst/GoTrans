@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { supabase } from '@/supabase'
 
-// 1. Trang chủ giữ nguyên import tĩnh để load nhanh nhất
+// 1. Trang chủ giữ nguyên import tĩnh
 import HomeView from '@/views/HomeView.vue'
 
 const router = createRouter({
@@ -12,10 +12,8 @@ const router = createRouter({
       component: HomeView,
       meta: { guestOnly: true },
     },
-    // 2. CÁC TRANG KHÁC CHUYỂN THÀNH LAZY LOAD
     {
       path: '/login',
-      // Chỉ tải file này khi user vào /login
       component: () => import('@/auth/AuthLogin.vue'),
       meta: { guestOnly: true },
     },
@@ -29,15 +27,35 @@ const router = createRouter({
       component: () => import('@/auth/VerifyPhone.vue'),
       meta: { guestOnly: true },
     },
+
+    // --- KHU VỰC SỬA ĐỔI ---
     {
       path: '/dashboard',
-      component: () => import('@/dashboard/DashboardView.vue'),
-      meta: { requiresAuth: true },
+      component: () => import('@/dashboard/DashboardPage.vue'),
+      children: [
+        {
+          path: '',
+          component: () => import('@/dashboard/DashboardView.vue'),
+        },
+        {
+          path: 'profile',
+          component: () => import('@/dashboard/DashboardProfile.vue'),
+        },
+        // --- THÊM 2 ROUTE NÀY ---
+        {
+          path: 'services/delivery',
+          component: () => import('@/dashboard/DeliveryPage.vue'),
+        },
+        {
+          path: 'services/moving-house',
+          component: () => import('@/dashboard/MovingHousePage.vue'),
+        },
+      ],
     },
-    // Xử lý 404 (nếu cần sau này)
+    // --- HẾT KHU VỰC SỬA ĐỔI ---
+
     // { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFound.vue') }
   ],
-  // Tự động cuộn lên đầu trang khi chuyển route
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
       return savedPosition
@@ -47,7 +65,7 @@ const router = createRouter({
   },
 })
 
-// ... Giữ nguyên phần router.beforeEach cũ của bạn ...
+// Giữ nguyên logic bảo vệ route
 router.beforeEach(async (to, _from, next) => {
   const {
     data: { session },
