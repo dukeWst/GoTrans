@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { supabase } from '@/supabase' // Giả định đường dẫn import
-import { User, Mail, Phone, MapPin, Camera, Save, Lock, Shield, Bell } from 'lucide-vue-next'
+import { supabase } from '@/supabase'
+import { User, Mail, Phone, Camera, Save, Lock, Shield, Edit3, Bell } from 'lucide-vue-next' // Thêm icon Edit3
 
 const router = useRouter()
 const loading = ref(true)
 const saving = ref(false)
+const isEditing = ref(false) // State quản lý chế độ chỉnh sửa
 
 // State cho form
 const profile = ref({
@@ -16,11 +17,10 @@ const profile = ref({
   phone: '',
   address: '',
   avatar_url: '',
-  role: 'member', // member | driver
+  role: 'member',
   join_date: '',
 })
 
-// Mock avatar (có thể thay bằng link thật nếu user chưa có avatar)
 const defaultAvatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed='
 
 onMounted(async () => {
@@ -39,7 +39,6 @@ const getProfile = async () => {
       return
     }
 
-    // Map dữ liệu từ Supabase User Object
     profile.value = {
       id: user.id,
       email: user.email || '',
@@ -57,10 +56,15 @@ const getProfile = async () => {
   }
 }
 
+// Hàm bật chế độ chỉnh sửa
+const enableEdit = () => {
+  isEditing.value = true
+}
+
+// Hàm lưu thông tin
 const updateProfile = async () => {
   try {
     saving.value = true
-    // Cập nhật thông tin vào user_metadata của Supabase Auth
     const { error } = await supabase.auth.updateUser({
       data: {
         full_name: profile.value.full_name,
@@ -71,13 +75,22 @@ const updateProfile = async () => {
 
     if (error) throw error
     alert('Cập nhật thông tin thành công!')
+    isEditing.value = false // Tắt chế độ chỉnh sửa sau khi lưu thành công
   } catch (error: any) {
     alert('Lỗi cập nhật: ' + error.message)
   } finally {
     saving.value = false
   }
 }
+
+// Hàm điều hướng sang trang Settings với tab cụ thể
+const goToSettings = (tabName: string) => {
+  // Giả định đường dẫn trang settings là /settings
+  // Query param ?tab=... sẽ được trang settings xử lý để active đúng tab
+  router.push({ path: '/dashboard/settings', query: { tab: tabName } })
+}
 </script>
+
 <template>
   <main class="flex-1 md:ml-64 p-6 lg:p-10">
     <header class="flex justify-between items-center mb-8">
@@ -99,7 +112,6 @@ const updateProfile = async () => {
           <div
             class="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-emerald-500 to-teal-600"
           ></div>
-
           <div class="relative mt-8 mb-4 group">
             <div
               class="w-28 h-28 rounded-full border-4 border-white shadow-md overflow-hidden bg-gray-100"
@@ -117,20 +129,16 @@ const updateProfile = async () => {
               <Camera class="w-4 h-4" />
             </button>
           </div>
-
           <h3 class="text-xl font-bold text-slate-900">
             {{ profile.full_name || 'Chưa cập nhật tên' }}
           </h3>
           <p class="text-slate-500 text-sm mb-4">{{ profile.email }}</p>
-
           <div class="flex gap-2 mb-6">
             <span
               class="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-100 uppercase tracking-wider"
+              >{{ profile.role }}</span
             >
-              {{ profile.role }}
-            </span>
           </div>
-
           <div class="w-full border-t border-gray-100 pt-4 text-left">
             <div class="flex justify-between items-center py-2 text-sm">
               <span class="text-slate-500">Tham gia từ</span>
@@ -145,16 +153,18 @@ const updateProfile = async () => {
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div
+            @click="goToSettings('notifications')"
             class="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition flex items-center gap-3"
           >
-            <div class="bg-blue-50 p-2 rounded-lg text-blue-600"><Shield class="w-5 h-5" /></div>
-            <span class="font-medium text-slate-700">Chính sách bảo mật</span>
+            <div class="bg-blue-50 p-2 rounded-lg text-blue-600"><Bell class="w-5 h-5" /></div>
+            <span class="font-medium text-slate-700">Cài đặt thông báo</span>
           </div>
-          <div class="p-4 hover:bg-gray-50 cursor-pointer transition flex items-center gap-3">
-            <div class="bg-orange-50 p-2 rounded-lg text-orange-600">
-              <Lock class="w-5 h-5" />
-            </div>
-            <span class="font-medium text-slate-700">Đổi mật khẩu</span>
+          <div
+            @click="goToSettings('security')"
+            class="p-4 hover:bg-gray-50 cursor-pointer transition flex items-center gap-3"
+          >
+            <div class="bg-orange-50 p-2 rounded-lg text-orange-600"><Lock class="w-5 h-5" /></div>
+            <span class="font-medium text-slate-700">Bảo mật & Mật khẩu</span>
           </div>
         </div>
       </div>
@@ -163,8 +173,7 @@ const updateProfile = async () => {
         <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
           <div class="flex justify-between items-center mb-6">
             <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <User class="w-5 h-5 text-emerald-600" />
-              Thông tin cá nhân
+              <User class="w-5 h-5 text-emerald-600" /> Thông tin cá nhân
             </h3>
           </div>
 
@@ -177,7 +186,8 @@ const updateProfile = async () => {
                   <input
                     v-model="profile.full_name"
                     type="text"
-                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 bg-gray-50/50"
+                    :disabled="!isEditing"
+                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 disabled:bg-gray-100 disabled:text-slate-500 disabled:cursor-not-allowed bg-gray-50/50"
                     placeholder="Nhập họ tên của bạn"
                   />
                 </div>
@@ -190,7 +200,8 @@ const updateProfile = async () => {
                   <input
                     v-model="profile.phone"
                     type="tel"
-                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 bg-gray-50/50"
+                    :disabled="!isEditing"
+                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 disabled:bg-gray-100 disabled:text-slate-500 disabled:cursor-not-allowed bg-gray-50/50"
                     placeholder="Nhập số điện thoại"
                   />
                 </div>
@@ -210,71 +221,40 @@ const updateProfile = async () => {
               </div>
             </div>
 
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-slate-700">Địa chỉ mặc định</label>
-              <div class="relative">
-                <MapPin class="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-                <textarea
-                  v-model="profile.address"
-                  rows="3"
-                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 bg-gray-50/50 resize-none"
-                  placeholder="Nhập địa chỉ của bạn để giao hàng nhanh hơn"
-                ></textarea>
-              </div>
-            </div>
-
             <div class="pt-4 flex justify-end">
               <button
-                type="submit"
-                :disabled="saving"
-                class="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                v-if="!isEditing"
+                type="button"
+                @click="enableEdit"
+                class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200"
               >
-                <span
-                  v-if="saving"
-                  class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
-                ></span>
-                <Save v-else class="w-4 h-4" />
-                {{ saving ? 'Đang lưu...' : 'Lưu thay đổi' }}
+                <Edit3 class="w-4 h-4" />
+                Chỉnh sửa hồ sơ
               </button>
+
+              <div v-else class="flex gap-3">
+                <button
+                  type="button"
+                  @click="isEditing = false"
+                  class="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  :disabled="saving"
+                  class="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  <span
+                    v-if="saving"
+                    class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
+                  ></span>
+                  <Save v-else class="w-4 h-4" />
+                  {{ saving ? 'Đang lưu...' : 'Lưu thay đổi' }}
+                </button>
+              </div>
             </div>
           </form>
-        </div>
-
-        <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-          <h3 class="text-lg font-bold text-slate-900 mb-6">Cài đặt thông báo</h3>
-          <div class="space-y-4">
-            <div
-              class="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-emerald-200 transition bg-gray-50/30"
-            >
-              <div>
-                <p class="font-medium text-slate-800">Cập nhật đơn hàng</p>
-                <p class="text-xs text-slate-500">
-                  Thông báo khi tài xế nhận đơn hoặc thay đổi trạng thái
-                </p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked class="sr-only peer" />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"
-                ></div>
-              </label>
-            </div>
-
-            <div
-              class="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-emerald-200 transition bg-gray-50/30"
-            >
-              <div>
-                <p class="font-medium text-slate-800">Khuyến mãi & Ưu đãi</p>
-                <p class="text-xs text-slate-500">Nhận thông báo về các mã giảm giá mới nhất</p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" class="sr-only peer" />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"
-                ></div>
-              </label>
-            </div>
-          </div>
         </div>
       </div>
     </div>

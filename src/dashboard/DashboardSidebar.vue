@@ -74,12 +74,12 @@
       </RouterLink>
     </nav>
 
-    <a
-      href="#"
+    <RouterLink
+      to="/dashboard/settings"
       class="flex items-center gap-3 px-8 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
     >
       <Settings class="w-5 h-5" /> Cài đặt
-    </a>
+    </RouterLink>
 
     <div class="p-4 border-t border-gray-100">
       <button

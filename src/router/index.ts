@@ -9,51 +9,65 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'home',
       component: HomeView,
       meta: { guestOnly: true },
     },
     {
       path: '/login',
+      name: 'login',
       component: () => import('@/auth/AuthLogin.vue'),
       meta: { guestOnly: true },
     },
     {
       path: '/register',
+      name: 'register',
       component: () => import('@/auth/AuthSignUp.vue'),
       meta: { guestOnly: true },
     },
     {
       path: '/verify-phone',
+      name: 'verify-phone',
       component: () => import('@/auth/VerifyPhone.vue'),
       meta: { guestOnly: true },
     },
 
-    // --- KHU VỰC SỬA ĐỔI ---
+    // --- KHU VỰC DASHBOARD (Yêu cầu đăng nhập) ---
     {
       path: '/dashboard',
       component: () => import('@/dashboard/DashboardPage.vue'),
+      // QUAN TRỌNG: Thêm dòng này để chặn người chưa đăng nhập
+      meta: { requiresAuth: true },
       children: [
         {
           path: '',
+          name: 'dashboard-home',
           component: () => import('@/dashboard/DashboardView.vue'),
         },
         {
           path: 'profile',
+          name: 'profile',
           component: () => import('@/dashboard/DashboardProfile.vue'),
         },
-        // --- THÊM 2 ROUTE NÀY ---
         {
           path: 'services/delivery',
+          name: 'service-delivery',
           component: () => import('@/dashboard/DeliveryPage.vue'),
         },
         {
           path: 'services/moving-house',
+          name: 'service-moving',
           component: () => import('@/dashboard/MovingHousePage.vue'),
+        },
+        {
+          path: 'settings',
+          name: 'settings',
+          component: () => import('@/dashboard/DashboardSetting.vue'),
         },
       ],
     },
-    // --- HẾT KHU VỰC SỬA ĐỔI ---
 
+    // Route 404 (Tùy chọn)
     // { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFound.vue') }
   ],
   scrollBehavior(to, from, savedPosition) {
@@ -65,18 +79,20 @@ const router = createRouter({
   },
 })
 
-// Giữ nguyên logic bảo vệ route
+// Logic bảo vệ route
 router.beforeEach(async (to, _from, next) => {
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (to.meta.requiresAuth && !session) {
+  // 1. Nếu route yêu cầu đăng nhập mà chưa có session -> Chuyển về login
+  if (to.matched.some((record) => record.meta.requiresAuth) && !session) {
     next('/login')
     return
   }
 
-  if (to.meta.guestOnly && session) {
+  // 2. Nếu route dành cho khách (guestOnly) mà đã có session -> Chuyển vào dashboard
+  if (to.matched.some((record) => record.meta.guestOnly) && session) {
     next('/dashboard')
     return
   }
