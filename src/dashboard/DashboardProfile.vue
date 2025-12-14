@@ -1,13 +1,40 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
-import { User, Mail, Phone, Camera, Save, Lock, Shield, Edit3, Bell } from 'lucide-vue-next' // Thêm icon Edit3
+import {
+  User,
+  Mail,
+  Phone,
+  Camera,
+  Save,
+  Lock,
+  Edit3,
+  Bell,
+  CheckCircle,
+  XCircle,
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const loading = ref(true)
 const saving = ref(false)
-const isEditing = ref(false) // State quản lý chế độ chỉnh sửa
+const isEditing = ref(false)
+
+// State quản lý Toast Notification
+const toast = reactive({
+  show: false,
+  message: '',
+  type: 'success' as 'success' | 'error',
+})
+
+const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  toast.message = message
+  toast.type = type
+  toast.show = true
+  setTimeout(() => {
+    toast.show = false
+  }, 3000) // Tự tắt sau 3 giây
+}
 
 // State cho form
 const profile = ref({
@@ -20,6 +47,9 @@ const profile = ref({
   role: 'member',
   join_date: '',
 })
+
+// Biến lưu trữ dữ liệu gốc để khôi phục nếu nhập rỗng
+const originalProfile = ref({ ...profile.value })
 
 const defaultAvatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed='
 
@@ -39,7 +69,7 @@ const getProfile = async () => {
       return
     }
 
-    profile.value = {
+    const userData = {
       id: user.id,
       email: user.email || '',
       full_name: user.user_metadata?.full_name || '',
@@ -49,6 +79,9 @@ const getProfile = async () => {
       role: user.user_metadata?.role || 'Khách hàng',
       join_date: new Date(user.created_at).toLocaleDateString('vi-VN'),
     }
+
+    profile.value = userData
+    originalProfile.value = { ...userData } // Lưu bản gốc ban đầu
   } catch (error) {
     console.error('Error fetching user:', error)
   } finally {
@@ -58,13 +91,35 @@ const getProfile = async () => {
 
 // Hàm bật chế độ chỉnh sửa
 const enableEdit = () => {
+  // Sao lưu dữ liệu hiện tại trước khi cho phép sửa
+  originalProfile.value = { ...profile.value }
   isEditing.value = true
+}
+
+// Hàm hủy bỏ chỉnh sửa
+const cancelEdit = () => {
+  // Khôi phục lại dữ liệu gốc
+  profile.value = { ...originalProfile.value }
+  isEditing.value = false
 }
 
 // Hàm lưu thông tin
 const updateProfile = async () => {
   try {
     saving.value = true
+
+    // LOGIC KIỂM TRA DỮ LIỆU RỖNG
+    // Nếu tên rỗng hoặc chỉ có dấu cách -> Lấy lại tên gốc
+    if (!profile.value.full_name || profile.value.full_name.trim() === '') {
+      profile.value.full_name = originalProfile.value.full_name
+    }
+
+    // Nếu sđt rỗng hoặc chỉ có dấu cách -> Lấy lại sđt gốc
+    if (!profile.value.phone || profile.value.phone.trim() === '') {
+      profile.value.phone = originalProfile.value.phone
+    }
+
+    // Cập nhật lên Supabase
     const { error } = await supabase.auth.updateUser({
       data: {
         full_name: profile.value.full_name,
@@ -74,25 +129,47 @@ const updateProfile = async () => {
     })
 
     if (error) throw error
-    alert('Cập nhật thông tin thành công!')
-    isEditing.value = false // Tắt chế độ chỉnh sửa sau khi lưu thành công
+
+    // Cập nhật lại bản gốc mới sau khi lưu thành công
+    originalProfile.value = { ...profile.value }
+
+    showToast('Cập nhật thông tin thành công!', 'success')
+    isEditing.value = false
   } catch (error: any) {
-    alert('Lỗi cập nhật: ' + error.message)
+    showToast('Lỗi cập nhật: ' + error.message, 'error')
   } finally {
     saving.value = false
   }
 }
 
-// Hàm điều hướng sang trang Settings với tab cụ thể
 const goToSettings = (tabName: string) => {
-  // Giả định đường dẫn trang settings là /settings
-  // Query param ?tab=... sẽ được trang settings xử lý để active đúng tab
   router.push({ path: '/dashboard/settings', query: { tab: tabName } })
 }
 </script>
 
 <template>
-  <main class="flex-1 md:ml-64 p-6 lg:p-10">
+  <main class="flex-1 md:ml-64 p-6 lg:p-10 relative">
+    <Transition name="toast">
+      <div
+        v-if="toast.show"
+        class="fixed top-24 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md transition-all duration-300 transform"
+        :class="
+          toast.type === 'success'
+            ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+            : 'bg-red-50/90 border-red-200 text-red-800'
+        "
+      >
+        <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5 text-emerald-600" />
+        <XCircle v-else class="w-5 h-5 text-red-600" />
+        <div>
+          <h4 class="font-bold text-sm">
+            {{ toast.type === 'success' ? 'Thành công' : 'Thất bại' }}
+          </h4>
+          <p class="text-xs opacity-90">{{ toast.message }}</p>
+        </div>
+      </div>
+    </Transition>
+
     <header class="flex justify-between items-center mb-8">
       <div>
         <h2 class="text-2xl font-bold text-slate-900">Tài khoản của tôi</h2>
@@ -235,7 +312,7 @@ const goToSettings = (tabName: string) => {
               <div v-else class="flex gap-3">
                 <button
                   type="button"
-                  @click="isEditing = false"
+                  @click="cancelEdit"
                   class="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition"
                 >
                   Hủy
@@ -260,3 +337,17 @@ const goToSettings = (tabName: string) => {
     </div>
   </main>
 </template>
+
+<style scoped>
+/* Hiệu ứng Toast Animation */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+</style>

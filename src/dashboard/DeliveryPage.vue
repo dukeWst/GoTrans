@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
 import {
   Package,
   User,
@@ -15,6 +15,8 @@ import {
 } from 'lucide-vue-next'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { profile } from 'console'
+import { supabase } from '@/supabase'
 
 // --- STATE QUẢN LÝ ---
 const currentStep = ref(1)
@@ -88,6 +90,40 @@ const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
     else isSearchingDropoff.value = false
   }
 }
+
+const profile = ref({
+  full_name: 'Đang tải...',
+  phone: '',
+})
+
+// Hàm lấy thông tin user từ Supabase
+const getProfile = async () => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user) {
+      // Lấy data từ metadata hoặc từ auth
+      const meta = user.user_metadata || {}
+
+      profile.value = {
+        full_name: meta.full_name || 'Khách hàng',
+        phone: user.phone || meta.phone || '',
+      }
+
+      // Tự động điền vào Form Người gửi
+      form.value.senderName = profile.value.full_name
+      form.value.senderPhone = profile.value.phone
+    }
+  } catch (error) {
+    console.error('Lỗi lấy thông tin user:', error)
+  }
+}
+
+onMounted(() => {
+  getProfile()
+})
 
 watch(pickupQuery, (v) => {
   clearTimeout(pickupDebounce)
@@ -287,7 +323,9 @@ onUnmounted(() => {
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">Họ tên</label
+                  <label class="text-xs font-semibold text-slate-500 ml-1">{{
+                    profile.full_name
+                  }}</label
                   ><input
                     v-model="form.senderName"
                     placeholder="Nguyễn Văn A"
@@ -295,8 +333,10 @@ onUnmounted(() => {
                   />
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">Số điện thoại</label
-                  ><input
+                  <label class="text-xs font-semibold text-slate-500 ml-1">{{
+                    profile.phone
+                  }}</label>
+                  <input
                     v-model="form.senderPhone"
                     placeholder="0912 xxx xxx"
                     class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"

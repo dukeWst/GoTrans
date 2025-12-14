@@ -1,74 +1,91 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue' // Thêm onMounted
+import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
-import { X } from 'lucide-vue-next'
+import { X, Mail, Lock } from 'lucide-vue-next'
 
 const router = useRouter()
 
-// State
-const phone = ref('')
+// State dữ liệu
+const email = ref('')
 const password = ref('')
-const error = ref('')
+const rememberMe = ref(false)
 const loading = ref(false)
-const rememberMe = ref(false) // State cho checkbox lưu mật khẩu
 
-// Khi trang vừa load, kiểm tra xem có thông tin đã lưu không
+// State quản lý lỗi (Object)
+const errors = reactive({
+  email: '',
+  password: '',
+  general: '', // Lỗi chung (VD: Sai tài khoản/mật khẩu từ server)
+})
+
 onMounted(() => {
-  const savedPhone = localStorage.getItem('gotrans_saved_phone')
-  if (savedPhone) {
-    phone.value = savedPhone
+  const savedEmail = localStorage.getItem('gotrans_saved_email')
+  if (savedEmail) {
+    email.value = savedEmail
     rememberMe.value = true
   }
 })
 
-// Hàm chuẩn hóa số điện thoại
-const formatPhone = (phoneStr: string) => {
-  let cleaned = phoneStr.replace(/\D/g, '')
-  if (cleaned.startsWith('0')) {
-    cleaned = '84' + cleaned.slice(1)
-  } else if (!cleaned.startsWith('84')) {
-    cleaned = '84' + cleaned
+// Hàm kiểm tra hợp lệ (Validate)
+const validate = () => {
+  let isValid = true
+
+  // Reset lỗi cũ
+  errors.email = ''
+  errors.password = ''
+  errors.general = ''
+
+  if (!email.value) {
+    errors.email = 'Vui lòng nhập email.'
+    isValid = false
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+    errors.email = 'Email không đúng định dạng.'
+    isValid = false
   }
-  return '+' + cleaned
+
+  if (!password.value) {
+    errors.password = 'Vui lòng nhập mật khẩu.'
+    isValid = false
+  } else if (password.value.length < 6) {
+    errors.password = 'Mật khẩu phải có ít nhất 6 ký tự.'
+    isValid = false
+  }
+
+  return isValid
 }
 
 const login = async () => {
-  error.value = ''
-
-  if (!phone.value || !password.value) {
-    error.value = 'Vui lòng nhập số điện thoại và mật khẩu.'
-    return
-  }
+  // 1. Chạy validate trước
+  if (!validate()) return
 
   try {
     loading.value = true
 
-    // Xử lý logic Ghi nhớ đăng nhập
+    // Xử lý ghi nhớ
     if (rememberMe.value) {
-      localStorage.setItem('gotrans_saved_phone', phone.value)
+      localStorage.setItem('gotrans_saved_email', email.value)
     } else {
-      localStorage.removeItem('gotrans_saved_phone')
+      localStorage.removeItem('gotrans_saved_email')
     }
 
-    // 1. Format số điện thoại
-    const formattedPhone = formatPhone(phone.value)
-
-    // 2. Gọi Supabase Login
+    // 2. Gọi API Login
     const { error: loginError } = await supabase.auth.signInWithPassword({
-      phone: formattedPhone,
+      email: email.value,
       password: password.value,
     })
 
     if (loginError) throw loginError
 
-    // 3. Thành công
     router.push('/dashboard')
   } catch (err: any) {
+    // 3. Xử lý lỗi trả về từ Supabase
     if (err.message.includes('Invalid login credentials')) {
-      error.value = 'Sai số điện thoại hoặc mật khẩu.'
+      errors.general = 'Email hoặc mật khẩu không chính xác.'
+    } else if (err.message.includes('Email not confirmed')) {
+      errors.general = 'Email chưa được xác thực. Vui lòng kiểm tra hộp thư.'
     } else {
-      error.value = err.message || 'Đăng nhập thất bại.'
+      errors.general = err.message || 'Đăng nhập thất bại. Vui lòng thử lại.'
     }
   } finally {
     loading.value = false
@@ -89,27 +106,51 @@ const login = async () => {
           <p class="text-gray-500 mt-3">Chào mừng quay lại</p>
         </div>
 
-        <form class="space-y-7" @submit.prevent="login">
+        <form class="space-y-6" @submit.prevent="login">
           <div>
-            <label class="text-sm text-gray-600">Số điện thoại</label>
-            <input
-              v-model="phone"
-              type="tel"
-              placeholder="0912 345 678"
-              autocomplete="username"
-              class="w-full border-b border-gray-300 py-2 outline-none focus:border-sky-500 transition"
-            />
+            <label class="text-sm text-gray-600">Email</label>
+            <div class="relative">
+              <input
+                v-model="email"
+                type="email"
+                placeholder="example@domain.com"
+                autocomplete="username"
+                class="w-full border-b py-2 pl-8 outline-none transition"
+                :class="
+                  errors.email
+                    ? 'border-red-500 text-red-600 placeholder-red-300'
+                    : 'border-gray-300 focus:border-sky-500'
+                "
+              />
+              <Mail
+                class="w-5 h-5 absolute left-0 top-2"
+                :class="errors.email ? 'text-red-500' : 'text-gray-400'"
+              />
+            </div>
+            <p v-if="errors.email" class="text-red-500 text-xs mt-1">{{ errors.email }}</p>
           </div>
 
           <div>
             <label class="text-sm text-gray-600">Mật khẩu</label>
-            <input
-              v-model="password"
-              type="password"
-              placeholder="••••••••"
-              autocomplete="current-password"
-              class="w-full border-b border-gray-300 py-2 outline-none focus:border-emerald-500 transition"
-            />
+            <div class="relative">
+              <input
+                v-model="password"
+                type="password"
+                placeholder="••••••••"
+                autocomplete="current-password"
+                class="w-full border-b py-2 pl-8 outline-none transition"
+                :class="
+                  errors.password
+                    ? 'border-red-500 text-red-600 placeholder-red-300'
+                    : 'border-gray-300 focus:border-emerald-500'
+                "
+              />
+              <Lock
+                class="w-5 h-5 absolute left-0 top-2"
+                :class="errors.password ? 'text-red-500' : 'text-gray-400'"
+              />
+            </div>
+            <p v-if="errors.password" class="text-red-500 text-xs mt-1">{{ errors.password }}</p>
           </div>
 
           <div class="flex items-center justify-between">
@@ -121,7 +162,6 @@ const login = async () => {
               />
               <span class="ml-2 text-sm text-gray-600">Lưu thông tin</span>
             </label>
-
             <a
               href="#"
               class="text-sm font-medium text-emerald-600 hover:text-emerald-500 hover:underline"
@@ -129,7 +169,13 @@ const login = async () => {
               Quên mật khẩu?
             </a>
           </div>
-          <p v-if="error" class="text-red-500 text-sm italic">{{ error }}</p>
+
+          <div
+            v-if="errors.general"
+            class="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center"
+          >
+            ⚠️ {{ errors.general }}
+          </div>
 
           <button
             :disabled="loading"
@@ -145,7 +191,6 @@ const login = async () => {
         </p>
       </div>
     </div>
-
     <div
       class="relative hidden lg:flex items-center justify-center overflow-hidden bg-gradient-to-br from-sky-500 via-teal-500 to-emerald-500"
     >

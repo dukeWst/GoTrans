@@ -1,40 +1,36 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
-import { ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, Mail } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 
-// Lấy số điện thoại từ URL, nếu không có thì để chuỗi rỗng
-const phone = (route.query.phone as string) || ''
+// Lấy Email từ URL
+const email = (route.query.email as string) || ''
 const token = ref('')
 const loading = ref(false)
 const error = ref('')
 const resendLoading = ref(false)
 const resendMessage = ref('')
 
-// Format số điện thoại để hiển thị đẹp hơn (VD: +849... -> 09...)
-const displayPhone = computed(() => {
-  if (!phone) return 'số điện thoại của bạn'
-  return phone.replace('+84', '0')
-})
-
 const verify = async () => {
   error.value = ''
-  if (!token.value || token.value.length < 6) {
-    error.value = 'Vui lòng nhập đủ 6 số OTP.'
+  // Token email thường là 6 số
+  if (!token.value || token.value.length < 8) {
+    error.value = 'Vui lòng nhập đủ mã OTP.'
     return
   }
 
   try {
     loading.value = true
 
+    // Xác thực OTP Email. Type 'signup' dùng khi xác thực đăng ký mới
     const { error: verifyError } = await supabase.auth.verifyOtp({
-      phone,
+      email: email,
       token: token.value,
-      type: 'sms',
+      type: 'signup', // Quan trọng: type là 'signup' cho đăng ký email
     })
 
     if (verifyError) throw verifyError
@@ -53,15 +49,18 @@ const resendOtp = async () => {
   error.value = ''
   try {
     resendLoading.value = true
-    const { error: resendError } = await supabase.auth.signInWithOtp({
-      phone: phone,
+    // Gửi lại email xác thực đăng ký
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
     })
 
     if (resendError) throw resendError
 
-    resendMessage.value = 'Đã gửi lại mã OTP thành công!'
+    resendMessage.value = 'Đã gửi lại mã xác thực vào email!'
   } catch (err: any) {
-    error.value = err.message || 'Không thể gửi lại mã lúc này.'
+    // Có thể Supabase giới hạn thời gian gửi lại (rate limit)
+    error.value = err.message || 'Vui lòng đợi vài giây trước khi gửi lại.'
   } finally {
     resendLoading.value = false
   }
@@ -81,10 +80,12 @@ const resendOtp = async () => {
         </button>
 
         <div class="mb-10">
-          <h1 class="text-4xl font-bold text-gray-900 leading-tight">Xác thực tài khoản</h1>
+          <h1 class="text-4xl font-bold text-gray-900 leading-tight">Xác thực Email</h1>
           <p class="text-gray-500 mt-4 text-lg">
-            Nhập mã OTP gồm 6 số đã được gửi đến <br />
-            <span class="font-bold text-gray-800">{{ displayPhone }}</span>
+            Nhập mã OTP gồm 8 số đã được gửi đến hộp thư <br />
+            <span class="font-bold text-gray-800 flex items-center gap-2 mt-2">
+              <Mail class="w-5 h-5" /> {{ email }}
+            </span>
           </p>
         </div>
 
@@ -98,9 +99,9 @@ const resendOtp = async () => {
             <input
               v-model="token"
               type="text"
-              maxlength="6"
+              maxlength="8"
               placeholder="000000"
-              class="w-full border-b-2 border-gray-300 py-4 text-center text-4xl font-bold tracking-[1em] text-gray-800 outline-none focus:border-emerald-500 transition-colors placeholder:text-gray-200 placeholder:tracking-normal"
+              class="w-full border-b-2 border-gray-300 py-4 text-center text-3xl font-bold tracking-[1em] text-gray-800 outline-none focus:border-emerald-500 transition-colors placeholder:text-gray-200 placeholder:tracking-normal"
             />
           </div>
 
@@ -126,7 +127,8 @@ const resendOtp = async () => {
         </form>
 
         <div class="mt-10 text-center">
-          <p class="text-gray-500 mb-2">Bạn không nhận được mã?</p>
+          <p class="text-gray-500 mb-2">Bạn không nhận được email?</p>
+          <p class="text-xs text-gray-400 mb-4">(Hãy kiểm tra cả mục Spam/Thư rác)</p>
           <button
             @click="resendOtp"
             :disabled="resendLoading"
@@ -152,39 +154,16 @@ const resendOtp = async () => {
         <div
           class="mb-8 inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-xl shadow-lg"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-10 w-10 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <Mail class="h-10 w-10 text-white" />
         </div>
         <h2 class="text-4xl font-bold text-white leading-snug">
           Bảo mật tối đa <br />
           <span class="text-white/90">An tâm vận chuyển</span>
         </h2>
         <p class="text-white/80 mt-6 max-w-md mx-auto text-lg">
-          Hệ thống xác thực 2 lớp giúp bảo vệ tài khoản và thông tin đơn hàng của bạn tuyệt đối an
-          toàn.
+          Vui lòng kiểm tra email để lấy mã xác thực kích hoạt tài khoản của bạn.
         </p>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-/* Ẩn nút tăng giảm số mặc định của input type number/tel nếu có */
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-</style>

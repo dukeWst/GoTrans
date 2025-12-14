@@ -26,9 +26,9 @@ const router = createRouter({
       meta: { guestOnly: true },
     },
     {
-      path: '/verify-phone',
-      name: 'verify-phone',
-      component: () => import('@/auth/VerifyPhone.vue'),
+      path: '/verify-email', // Đổi đường dẫn
+      name: 'verify-email',
+      component: () => import('@/auth/VerifyEmail.vue'), // Trỏ tới file mới
       meta: { guestOnly: true },
     },
 
@@ -63,6 +63,11 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('@/dashboard/DashboardSetting.vue'),
+        },
+        {
+          path: 'history',
+          name: 'history',
+          component: () => import('@/dashboard/DashboardHistory.vue'),
         },
       ],
     },
