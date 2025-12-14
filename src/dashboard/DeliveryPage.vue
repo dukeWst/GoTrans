@@ -1,31 +1,59 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
+import { useRouter } from 'vue-router' // Import Router
 import {
   Package,
-  User,
   Weight,
   MapPin,
-  Phone,
-  FileText,
   ChevronRight,
   ChevronLeft,
   CheckCircle,
   Calculator,
-  Truck,
+  Wallet,
+  CreditCard,
+  QrCode,
+  Clock,
+  Home,
 } from 'lucide-vue-next'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { profile } from 'console'
 import { supabase } from '@/supabase'
+
+const router = useRouter() // Sử dụng router
+
+// --- 0. ICON MAP ---
+const pickupIcon = new L.Icon({
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+})
+
+const dropoffIcon = new L.Icon({
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+})
 
 // --- STATE QUẢN LÝ ---
 const currentStep = ref(1)
 const distance = ref(0)
 const isCalculating = ref(false)
 
+// STATE THANH TOÁN ONLINE
+const isShowQR = ref(false) // Trạng thái hiển thị QR
+const countdown = ref(10) // Đếm ngược 10s
+let timerInterval: any = null
+
 // Map Variables
 let map: L.Map | null = null
-let routeLine: L.Polyline | null = null
 let markers: L.Marker[] = []
 
 // --- STATE TÌM KIẾM ---
@@ -41,7 +69,6 @@ const notFoundDropoff = ref(false)
 let pickupDebounce: any = null
 let dropoffDebounce: any = null
 
-// Lưu tọa độ thực tế
 const coords = ref({
   pickup: null as [number, number] | null,
   dropoff: null as [number, number] | null,
@@ -58,9 +85,10 @@ const form = ref({
   note: '',
   pickupAddress: '',
   dropoffAddress: '',
+  paymentMethod: 'cod',
 })
 
-// --- 1. HÀM TÌM KIẾM ĐỊA CHỈ (NOMINATIM) ---
+// --- CÁC HÀM CŨ (GIỮ NGUYÊN) ---
 const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
   if (!query || query.length < 2) return
   if (type === 'pickup') {
@@ -91,33 +119,24 @@ const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
   }
 }
 
-const profile = ref({
-  full_name: 'Đang tải...',
-  phone: '',
-})
+const profile = ref({ full_name: 'Đang tải...', phone: '' })
 
-// Hàm lấy thông tin user từ Supabase
 const getProfile = async () => {
   try {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-
     if (user) {
-      // Lấy data từ metadata hoặc từ auth
       const meta = user.user_metadata || {}
-
       profile.value = {
         full_name: meta.full_name || 'Khách hàng',
         phone: user.phone || meta.phone || '',
       }
-
-      // Tự động điền vào Form Người gửi
       form.value.senderName = profile.value.full_name
       form.value.senderPhone = profile.value.phone
     }
   } catch (error) {
-    console.error('Lỗi lấy thông tin user:', error)
+    console.error(error)
   }
 }
 
@@ -134,7 +153,6 @@ watch(dropoffQuery, (v) => {
   dropoffDebounce = setTimeout(() => fetchNominatim(v, 'dropoff'), 800)
 })
 
-// --- CHỌN ĐỊA CHỈ ---
 const selectAddress = (item: any, type: 'pickup' | 'dropoff') => {
   const fullAddress = item.display_name
   const lat = parseFloat(item.lat)
@@ -153,7 +171,6 @@ const selectAddress = (item: any, type: 'pickup' | 'dropoff') => {
   }
 }
 
-// --- KHỞI TẠO MAP ---
 const initMap = () => {
   if (map) return
   map = L.map('mapContainer').setView([21.0285, 105.8542], 13)
@@ -162,75 +179,60 @@ const initMap = () => {
   }).addTo(map)
 }
 
-// --- 5. TÍNH ĐƯỜNG ĐI THỰC TẾ (SERVER ĐỨC - TRỰC TIẾP) ---
 const calculateRoute = async () => {
   if (!coords.value.pickup || !coords.value.dropoff) {
-    return alert('Vui lòng chọn địa chỉ từ danh sách gợi ý!')
+    return alert('Vui lòng chọn địa chỉ từ gợi ý!')
   }
   isCalculating.value = true
-
-  // Xóa cũ
-  if (routeLine) map?.removeLayer(routeLine)
   markers.forEach((m) => map?.removeLayer(m))
   markers = []
 
   const start = coords.value.pickup
   const end = coords.value.dropoff
 
-  // Marker
-  const startMarker = L.circleMarker(start, { color: 'green', radius: 8 })
+  const startMarker = L.marker(start, { icon: pickupIcon })
     .addTo(map!)
     .bindPopup('Điểm lấy')
     .openPopup()
-  const endMarker = L.circleMarker(end, { color: 'orange', radius: 8 })
-    .addTo(map!)
-    .bindPopup('Điểm giao')
+  const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('Điểm giao')
   markers.push(startMarker, endMarker)
 
+  const group = new L.FeatureGroup(markers)
+  map!.fitBounds(group.getBounds().pad(0.1))
+
   try {
-    // SỬ DỤNG SERVER CỦA ĐỨC (ROUTED-CAR)
-    // Server này hỗ trợ CORS tốt, cho phép gọi trực tiếp từ localhost mà không cần Proxy
-    const osrmUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
-
-    console.log('Đang tải lộ trình (Direct):', osrmUrl)
-
-    // Gọi trực tiếp (Không qua Proxy)
-    const res = await fetch(osrmUrl)
-
-    if (!res.ok) {
-      if (res.status === 429) throw new Error('Quá nhiều yêu cầu, vui lòng đợi 1 phút')
-      throw new Error(`Lỗi kết nối Server (${res.status})`)
-    }
-
+    const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=false`
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
+    const res = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
+    if (!res.ok) throw new Error('Server lỗi')
     const data = await res.json()
-
-    if (data.code === 'Ok' && data.routes.length > 0) {
-      const route = data.routes[0]
-
-      // 1. Khoảng cách thực tế (km)
-      distance.value = parseFloat((route.distance / 1000).toFixed(1))
-
-      // 2. Vẽ đường uốn lượn
-      const pathCoords = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]])
-
-      routeLine = L.polyline(pathCoords, {
-        color: '#059669', // Màu xanh
-        weight: 6,
-        opacity: 0.8,
-        lineJoin: 'round',
-      }).addTo(map!)
-
-      map!.fitBounds(L.latLngBounds(pathCoords), { padding: [50, 50] })
+    if (data.code === 'Ok' && data.routes.length) {
+      distance.value = parseFloat((data.routes[0].distance / 1000).toFixed(1))
     } else {
-      throw new Error('Không tìm thấy đường đi ô tô')
+      throw new Error('No route')
     }
-  } catch (e: any) {
-    console.error(e)
-    alert(`Lỗi: ${e.message}. \n\nNếu lỗi này lặp lại, có thể Server đang bảo trì.`)
-    distance.value = 0
+  } catch (e) {
+    const straightDistance = calculateDistance(start[0], start[1], end[0], end[1])
+    distance.value = parseFloat((straightDistance * 1.3).toFixed(1))
   } finally {
     isCalculating.value = false
   }
+}
+
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLon = (lon2 - lon1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return parseFloat((R * c).toFixed(1))
 }
 
 const totalPrice = computed(() => {
@@ -243,7 +245,8 @@ const totalPrice = computed(() => {
 watch(currentStep, async (v) => {
   if (v === 3) {
     await nextTick()
-    initMap()
+    // Chỉ initMap nếu chưa show QR
+    if (!isShowQR.value) initMap()
   }
 })
 watch([() => coords.value.pickup, () => coords.value.dropoff], () => {
@@ -255,13 +258,60 @@ const nextStep = () => {
 const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
-const handleSubmit = () => alert(`Tổng tiền: ${totalPrice.value.toLocaleString()}đ`)
+
+// --- XỬ LÝ THANH TOÁN & ĐẶT HÀNG ---
+const handleSubmit = () => {
+  if (form.value.paymentMethod === 'cod') {
+    // 1. Nếu là COD -> Chuyển thẳng đến bước 4
+    currentStep.value = 4
+  } else {
+    // 2. Nếu là Online -> Hiện giao diện QR tại bước 3
+    isShowQR.value = true
+    startCountdown()
+  }
+}
+
+// Logic đếm ngược
+const startCountdown = () => {
+  countdown.value = 10
+  if (timerInterval) clearInterval(timerInterval)
+
+  timerInterval = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timerInterval)
+      // Hết giờ -> Tắt QR -> Chuyển sang bước 4
+      isShowQR.value = false
+      currentStep.value = 4
+    }
+  }, 1000)
+}
+
+// Hủy QR nếu muốn quay lại chọn phương thức khác
+const cancelQR = () => {
+  if (timerInterval) clearInterval(timerInterval)
+  isShowQR.value = false
+  // Cần init lại map vì DOM có thể đã bị thay đổi
+  nextTick(() => {
+    map?.remove()
+    map = null
+    initMap()
+    // Vẽ lại marker nếu cần
+    if (coords.value.pickup && coords.value.dropoff) calculateRoute()
+  })
+}
+
+// Quay về Dashboard
+const goDashboard = () => {
+  router.push('/dashboard')
+}
 
 onUnmounted(() => {
   if (map) {
     map.remove()
     map = null
   }
+  if (timerInterval) clearInterval(timerInterval)
 })
 </script>
 
@@ -279,10 +329,10 @@ onUnmounted(() => {
         <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10"></div>
         <div
           class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 transition-all duration-300 -z-10"
-          :style="{ width: ((currentStep - 1) / 2) * 100 + '%' }"
+          :style="{ width: ((currentStep - 1) / 3) * 100 + '%' }"
         ></div>
         <div
-          v-for="step in 3"
+          v-for="step in 4"
           :key="step"
           :class="[
             'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors border-4',
@@ -295,7 +345,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="flex justify-between mt-2 text-xs font-medium text-slate-500">
-        <span>Liên lạc</span><span>Gói hàng</span><span>Lộ trình</span>
+        <span>Liên lạc</span><span>Gói hàng</span><span>Lộ trình</span><span>Hoàn tất</span>
       </div>
     </div>
 
@@ -307,13 +357,10 @@ onUnmounted(() => {
           <div class="flex items-center justify-between border-b border-gray-100 pb-4">
             <h3 class="text-lg font-bold text-slate-800">Thông tin liên lạc</h3>
             <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
-              >Bước 1/3</span
+              >Bước 1/4</span
             >
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
-            <div
-              class="hidden md:block absolute left-1/2 top-4 bottom-4 w-px bg-gray-100 -translate-x-1/2"
-            ></div>
             <div class="space-y-5">
               <div
                 class="flex items-center gap-2 text-emerald-600 font-bold text-sm uppercase tracking-wider"
@@ -323,22 +370,16 @@ onUnmounted(() => {
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">{{
-                    profile.full_name
-                  }}</label
+                  <label class="text-xs font-semibold text-slate-500 ml-1">Họ tên</label
                   ><input
                     v-model="form.senderName"
-                    placeholder="Nguyễn Văn A"
                     class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
                   />
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">{{
-                    profile.phone
-                  }}</label>
-                  <input
+                  <label class="text-xs font-semibold text-slate-500 ml-1">SĐT</label
+                  ><input
                     v-model="form.senderPhone"
-                    placeholder="0912 xxx xxx"
                     class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
                   />
                 </div>
@@ -356,15 +397,13 @@ onUnmounted(() => {
                   <label class="text-xs font-semibold text-slate-500 ml-1">Họ tên</label
                   ><input
                     v-model="form.receiverName"
-                    placeholder="Trần Thị B"
                     class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none"
                   />
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">Số điện thoại</label
+                  <label class="text-xs font-semibold text-slate-500 ml-1">SĐT</label
                   ><input
                     v-model="form.receiverPhone"
-                    placeholder="0987 xxx xxx"
                     class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none"
                   />
                 </div>
@@ -377,7 +416,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between border-b border-gray-100 pb-4">
             <h3 class="text-lg font-bold text-slate-800">Chi tiết kiện hàng</h3>
             <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
-              >Bước 2/3</span
+              >Bước 2/4</span
             >
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -429,146 +468,312 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-else class="space-y-6 flex flex-col flex-1 animate-fade-in">
-          <div class="flex items-center justify-between border-b border-gray-100 pb-4">
-            <h3 class="text-lg font-bold text-slate-800">Lộ trình & Thanh toán</h3>
-            <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
-              >Bước 3/3</span
-            >
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-1 relative z-[1001]">
-              <label class="text-xs font-bold text-emerald-600 uppercase ml-1">Điểm lấy hàng</label>
-              <div class="relative group">
-                <MapPin class="absolute left-3 top-3 w-5 h-5 text-emerald-600 z-10" />
-                <input
-                  v-model="pickupQuery"
-                  type="text"
-                  placeholder="Nhập địa chỉ (VD: Hà Nội)..."
-                  class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-emerald-500 outline-none shadow-sm"
-                />
-                <div
-                  v-if="isSearchingPickup"
-                  class="absolute right-3 top-3 w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-600 rounded-full animate-spin"
-                ></div>
-              </div>
-              <div
-                v-if="pickupSuggestions.length > 0"
-                class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+        <div v-else-if="currentStep === 3" class="space-y-6 flex flex-col flex-1 animate-fade-in">
+          <template v-if="!isShowQR">
+            <div class="flex items-center justify-between border-b border-gray-100 pb-4">
+              <h3 class="text-lg font-bold text-slate-800">Lộ trình & Thanh toán</h3>
+              <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
+                >Bước 3/4</span
               >
-                <div
-                  v-for="(item, index) in pickupSuggestions"
-                  :key="index"
-                  @click="selectAddress(item, 'pickup')"
-                  class="p-3 hover:bg-emerald-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="space-y-1 relative z-[1001]">
+                <label class="text-xs font-bold text-emerald-600 uppercase ml-1"
+                  >Điểm lấy hàng</label
                 >
-                  <span class="font-bold text-slate-900">{{
-                    (item.display_name || '').split(',')[0]
-                  }}</span
-                  ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
+                <div class="relative group">
+                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-emerald-600 z-10" />
+                  <input
+                    v-model="pickupQuery"
+                    type="text"
+                    placeholder="Nhập địa chỉ..."
+                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-emerald-500 outline-none shadow-sm"
+                  />
+                  <div
+                    v-if="isSearchingPickup"
+                    class="absolute right-3 top-3 w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-600 rounded-full animate-spin"
+                  ></div>
+                </div>
+                <div
+                  v-if="pickupSuggestions.length > 0"
+                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                >
+                  <div
+                    v-for="(item, index) in pickupSuggestions"
+                    :key="index"
+                    @click="selectAddress(item, 'pickup')"
+                    class="p-3 hover:bg-emerald-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                  >
+                    <span class="font-bold text-slate-900">{{
+                      (item.display_name || '').split(',')[0]
+                    }}</span
+                    ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
+                  </div>
                 </div>
               </div>
-              <div
-                v-if="notFoundPickup && !isSearchingPickup"
-                class="absolute top-full left-0 w-full mt-1 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 shadow-lg z-50"
-              >
-                Không tìm thấy địa điểm.
+              <div class="space-y-1 relative z-[1000]">
+                <label class="text-xs font-bold text-orange-500 uppercase ml-1"
+                  >Điểm giao hàng</label
+                >
+                <div class="relative group">
+                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-orange-500 z-10" />
+                  <input
+                    v-model="dropoffQuery"
+                    type="text"
+                    placeholder="Nhập địa chỉ..."
+                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-orange-500 outline-none shadow-sm"
+                  />
+                  <div
+                    v-if="isSearchingDropoff"
+                    class="absolute right-3 top-3 w-5 h-5 border-2 border-orange-500/30 border-t-orange-600 rounded-full animate-spin"
+                  ></div>
+                </div>
+                <div
+                  v-if="dropoffSuggestions.length > 0"
+                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                >
+                  <div
+                    v-for="(item, index) in dropoffSuggestions"
+                    :key="index"
+                    @click="selectAddress(item, 'dropoff')"
+                    class="p-3 hover:bg-orange-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                  >
+                    <span class="font-bold text-slate-900">{{
+                      (item.display_name || '').split(',')[0]
+                    }}</span
+                    ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="space-y-1 relative z-[1000]">
-              <label class="text-xs font-bold text-orange-500 uppercase ml-1">Điểm giao hàng</label>
-              <div class="relative group">
-                <MapPin class="absolute left-3 top-3 w-5 h-5 text-orange-500 z-10" />
-                <input
-                  v-model="dropoffQuery"
-                  type="text"
-                  placeholder="Nhập địa chỉ..."
-                  class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-orange-500 outline-none shadow-sm"
-                />
-                <div
-                  v-if="isSearchingDropoff"
-                  class="absolute right-3 top-3 w-5 h-5 border-2 border-orange-500/30 border-t-orange-600 rounded-full animate-spin"
-                ></div>
-              </div>
-              <div
-                v-if="dropoffSuggestions.length > 0"
-                class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
-              >
-                <div
-                  v-for="(item, index) in dropoffSuggestions"
-                  :key="index"
-                  @click="selectAddress(item, 'dropoff')"
-                  class="p-3 hover:bg-orange-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
-                >
-                  <span class="font-bold text-slate-900">{{
-                    (item.display_name || '').split(',')[0]
-                  }}</span
-                  ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
-                </div>
-              </div>
-              <div
-                v-if="notFoundDropoff && !isSearchingDropoff"
-                class="absolute top-full left-0 w-full mt-1 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 shadow-lg z-50"
-              >
-                Không tìm thấy địa điểm.
-              </div>
-            </div>
-          </div>
-
-          <div
-            class="relative rounded-2xl overflow-hidden border border-gray-200 h-64 md:h-80 bg-slate-100 shadow-inner z-0"
-          >
-            <div id="mapContainer" class="w-full h-full z-0"></div>
             <div
-              v-if="!distance"
-              class="absolute inset-0 bg-white/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
+              class="relative rounded-2xl overflow-hidden border border-gray-200 h-64 md:h-80 bg-slate-100 shadow-inner z-0"
             >
-              <button
-                @click="calculateRoute"
-                class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-full font-bold hover:scale-105 shadow-xl transition-all"
+              <div id="mapContainer" class="w-full h-full z-0"></div>
+              <div
+                v-if="!distance"
+                class="absolute inset-0 bg-white/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
               >
-                <Calculator v-if="!isCalculating" class="w-4 h-4" />
-                {{ isCalculating ? 'Đang tìm đường...' : 'Xem lộ trình & Giá tiền' }}
-              </button>
+                <button
+                  @click="calculateRoute"
+                  class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-full font-bold hover:scale-105 shadow-xl transition-all"
+                >
+                  <Calculator v-if="!isCalculating" class="w-4 h-4" />
+                  {{ isCalculating ? 'Đang tìm đường...' : 'Xem lộ trình & Giá tiền' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="distance > 0" class="space-y-6">
+              <div
+                class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-100 animate-fade-in"
+              >
+                <div
+                  class="flex justify-between items-end mb-4 border-b border-emerald-200/50 pb-4"
+                >
+                  <div>
+                    <p class="text-sm text-emerald-700">Khoảng cách thực</p>
+                    <p class="text-2xl font-bold text-emerald-900">{{ distance }} km</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-sm text-emerald-700">Tổng chi phí</p>
+                    <p class="text-3xl font-extrabold text-emerald-600">
+                      {{ totalPrice.toLocaleString('vi-VN') }}đ
+                    </p>
+                  </div>
+                </div>
+                <div class="space-y-1.5 text-xs text-emerald-800">
+                  <div class="flex justify-between">
+                    <span>Phí mở cửa:</span><span class="font-medium">15.000đ</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Phí vận chuyển:</span
+                    ><span class="font-medium">{{ (distance * 5000).toLocaleString() }}đ</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Phí khối lượng:</span
+                    ><span class="font-medium">{{ (form.weight * 2000).toLocaleString() }}đ</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 class="font-bold text-slate-800 mb-3 text-sm uppercase">
+                  Phương thức thanh toán
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    @click="form.paymentMethod = 'cod'"
+                    :class="[
+                      'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
+                      form.paymentMethod === 'cod'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
+                        : 'border-gray-200 hover:bg-gray-50 text-slate-600',
+                    ]"
+                  >
+                    <div class="p-2 bg-white rounded-full border border-gray-100 shadow-sm">
+                      <Wallet
+                        class="w-5 h-5"
+                        :class="
+                          form.paymentMethod === 'cod' ? 'text-emerald-600' : 'text-slate-400'
+                        "
+                      />
+                    </div>
+                    <div>
+                      <p class="font-bold text-sm">Thanh toán khi nhận hàng</p>
+                      <p class="text-xs opacity-70">Tiền mặt (COD)</p>
+                    </div>
+                    <div class="ml-auto" v-if="form.paymentMethod === 'cod'">
+                      <CheckCircle class="w-5 h-5 text-emerald-600" />
+                    </div>
+                  </div>
+
+                  <div
+                    @click="form.paymentMethod = 'online'"
+                    :class="[
+                      'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
+                      form.paymentMethod === 'online'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
+                        : 'border-gray-200 hover:bg-gray-50 text-slate-600',
+                    ]"
+                  >
+                    <div class="p-2 bg-white rounded-full border border-gray-100 shadow-sm">
+                      <CreditCard
+                        class="w-5 h-5"
+                        :class="
+                          form.paymentMethod === 'online' ? 'text-emerald-600' : 'text-slate-400'
+                        "
+                      />
+                    </div>
+                    <div>
+                      <p class="font-bold text-sm">Thanh toán trực tuyến</p>
+                      <p class="text-xs opacity-70">VNPAY / MOMO / Banking</p>
+                    </div>
+                    <div class="ml-auto" v-if="form.paymentMethod === 'online'">
+                      <CheckCircle class="w-5 h-5 text-emerald-600" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="flex flex-col items-center justify-center text-center animate-fade-in py-6">
+              <h3 class="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+                <QrCode class="w-6 h-6 text-emerald-600" /> Quét mã để thanh toán
+              </h3>
+              <p class="text-slate-500 mb-6 max-w-sm">
+                Vui lòng sử dụng ứng dụng ngân hàng để quét mã bên dưới. Đơn hàng sẽ tự động hoàn
+                tất sau khi thanh toán.
+              </p>
+
+              <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-lg mb-6 relative">
+                <img
+                  :src="`https://img.vietqr.io/image/MB-0987654321-compact.jpg?amount=${totalPrice}&addInfo=GOTRANS ${profile.phone}`"
+                  alt="QR Code"
+                  class="w-64 h-64 object-contain"
+                />
+
+                <div
+                  class="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md animate-bounce"
+                >
+                  {{ countdown }}s
+                </div>
+              </div>
+
+              <div
+                class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
+              >
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Ngân hàng</span>
+                  <span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
+                </div>
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Số tài khoản</span>
+                  <span class="font-bold text-slate-800">0987 654 321</span>
+                </div>
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Số tiền</span>
+                  <span class="font-bold text-emerald-600 text-lg"
+                    >{{ totalPrice.toLocaleString() }}đ</span
+                  >
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-500 text-sm">Nội dung</span>
+                  <span class="font-bold text-slate-800">GOTRANS {{ profile.phone }}</span>
+                </div>
+              </div>
+
+              <div class="flex gap-3">
+                <button
+                  @click="cancelQR"
+                  class="px-6 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  class="flex items-center gap-2 px-6 py-2 bg-emerald-50 text-emerald-700 rounded-lg font-bold"
+                >
+                  <Clock class="w-4 h-4 animate-spin" /> Đang chờ thanh toán...
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-else-if="currentStep === 4"
+          class="flex flex-col items-center justify-center text-center py-10 animate-fade-in"
+        >
+          <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+            <CheckCircle class="w-10 h-10 text-emerald-600" />
+          </div>
+          <h3 class="text-2xl font-bold text-slate-900 mb-2">Đặt đơn hàng thành công!</h3>
+          <p class="text-slate-500 mb-8 max-w-md">
+            Cảm ơn bạn đã sử dụng dịch vụ GoTrans. Tài xế sẽ liên hệ với bạn trong giây lát. Mã đơn
+            hàng:
+            <span class="font-mono font-bold text-slate-800"
+              >#GD{{ Math.floor(Math.random() * 10000) }}</span
+            >
+          </p>
+
+          <div
+            class="bg-slate-50 p-6 rounded-2xl w-full max-w-md mb-8 border border-slate-100 text-left space-y-3"
+          >
+            <h4 class="font-bold text-slate-800 border-b pb-2 mb-2">Chi tiết đơn hàng</h4>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Người gửi:</span>
+              <span class="font-medium text-slate-800">{{ form.senderName }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Người nhận:</span>
+              <span class="font-medium text-slate-800">{{ form.receiverName }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Tổng tiền:</span>
+              <span class="font-bold text-emerald-600">{{ totalPrice.toLocaleString() }}đ</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Thanh toán:</span>
+              <span class="font-medium text-slate-800 uppercase">{{
+                form.paymentMethod === 'cod' ? 'Tiền mặt' : 'Online'
+              }}</span>
             </div>
           </div>
 
-          <div
-            v-if="distance > 0"
-            class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-100 animate-fade-in"
+          <button
+            @click="goDashboard"
+            class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 shadow-lg transition"
           >
-            <div class="flex justify-between items-end mb-4 border-b border-emerald-200/50 pb-4">
-              <div>
-                <p class="text-sm text-emerald-700">Khoảng cách thực</p>
-                <p class="text-2xl font-bold text-emerald-900">{{ distance }} km</p>
-              </div>
-              <div class="text-right">
-                <p class="text-sm text-emerald-700">Tổng chi phí</p>
-                <p class="text-3xl font-extrabold text-emerald-600">
-                  {{ totalPrice.toLocaleString('vi-VN') }}đ
-                </p>
-              </div>
-            </div>
-            <div class="space-y-1.5 text-xs text-emerald-800">
-              <div class="flex justify-between">
-                <span>Phí mở cửa:</span><span class="font-medium">15.000đ</span>
-              </div>
-              <div class="flex justify-between">
-                <span>Phí vận chuyển:</span
-                ><span class="font-medium">{{ (distance * 5000).toLocaleString() }}đ</span>
-              </div>
-              <div class="flex justify-between">
-                <span>Phí khối lượng:</span
-                ><span class="font-medium">{{ (form.weight * 2000).toLocaleString() }}đ</span>
-              </div>
-            </div>
-          </div>
+            <Home class="w-4 h-4" /> Quay về trang chủ
+          </button>
         </div>
       </div>
 
-      <div class="mt-8 flex justify-between items-center">
+      <div v-if="currentStep < 4 && !isShowQR" class="mt-8 flex justify-between items-center">
         <button
           v-if="currentStep > 1"
           @click="prevStep"
@@ -576,6 +781,7 @@ onUnmounted(() => {
         >
           <ChevronLeft class="w-5 h-5" /> Quay lại
         </button>
+
         <button
           v-if="currentStep < 3"
           @click="nextStep"
@@ -583,6 +789,7 @@ onUnmounted(() => {
         >
           Tiếp theo <ChevronRight class="w-5 h-5" />
         </button>
+
         <button
           v-else
           @click="handleSubmit"
@@ -609,12 +816,5 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
-}
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
 }
 </style>
