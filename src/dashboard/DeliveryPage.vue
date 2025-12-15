@@ -18,7 +18,6 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
-import { log } from 'console'
 
 const router = useRouter()
 
@@ -60,7 +59,6 @@ let markers: L.Marker[] = []
 // --- STATE TÌM KIẾM ---
 const pickupQuery = ref('')
 const dropoffQuery = ref('')
-
 const isSelecting = ref(false)
 
 const pickupSuggestions = ref<any[]>([])
@@ -78,7 +76,7 @@ const coords = ref({
   dropoff: null as [number, number] | null,
 })
 
-// Dữ liệu Form
+// --- DỮ LIỆU FORM ---
 const form = ref({
   senderName: '',
   senderPhone: '',
@@ -90,7 +88,22 @@ const form = ref({
   pickupAddress: '',
   dropoffAddress: '',
   paymentMethod: 'cod',
+  packageType: 'standard',
 })
+
+// --- STATE LƯU LỖI (VALIDATION) ---
+const errors = ref({
+  senderName: '',
+  senderPhone: '',
+  receiverName: '',
+  receiverPhone: '',
+  weight: '',
+})
+
+// Hàm xóa lỗi khi focus
+const clearError = (field: keyof typeof errors.value) => {
+  errors.value[field] = ''
+}
 
 // --- LOGIC RESET DỮ LIỆU ---
 const resetState = () => {
@@ -106,7 +119,7 @@ const resetState = () => {
     markers = []
   }
 
-  // Reset form (Giữ thông tin người gửi)
+  // Reset form
   form.value.receiverName = ''
   form.value.receiverPhone = ''
   form.value.weight = 1
@@ -120,6 +133,55 @@ const resetState = () => {
   pickupQuery.value = ''
   dropoffQuery.value = ''
   coords.value = { pickup: null, dropoff: null }
+}
+
+// --- LOGIC VALIDATE ---
+const validateStep = (step: number) => {
+  let isValid = true
+
+  if (step === 1) {
+    errors.value.senderName = ''
+    errors.value.senderPhone = ''
+    errors.value.receiverName = ''
+    errors.value.receiverPhone = ''
+
+    if (!form.value.senderName.trim()) {
+      errors.value.senderName = 'Vui lòng nhập họ tên'
+      isValid = false
+    }
+    if (!form.value.senderPhone) {
+      errors.value.senderPhone = 'Vui lòng nhập SĐT'
+      isValid = false
+    } else if (!/^\d{10}$/.test(form.value.senderPhone)) {
+      errors.value.senderPhone = 'SĐT phải có 10 số'
+      isValid = false
+    }
+
+    if (!form.value.receiverName.trim()) {
+      errors.value.receiverName = 'Vui lòng nhập họ tên'
+      isValid = false
+    }
+    if (!form.value.receiverPhone) {
+      errors.value.receiverPhone = 'Vui lòng nhập SĐT'
+      isValid = false
+    } else if (!/^\d{10}$/.test(form.value.receiverPhone)) {
+      errors.value.receiverPhone = 'SĐT phải có 10 số'
+      isValid = false
+    }
+  }
+
+  if (step === 2) {
+    errors.value.weight = ''
+    if (!form.value.weight) {
+      errors.value.weight = 'Nhập khối lượng'
+      isValid = false
+    } else if (Number(form.value.weight) <= 0) {
+      errors.value.weight = 'Phải lớn hơn 0'
+      isValid = false
+    }
+  }
+
+  return isValid
 }
 
 // --- CÁC HÀM XỬ LÝ ---
@@ -191,8 +253,7 @@ watch(dropoffQuery, (v) => {
 })
 
 const selectAddress = (item: any, type: 'pickup' | 'dropoff') => {
-  isSelecting.value = true // <-- 1. Bật cờ lên để chặn watch
-
+  isSelecting.value = true
   const fullAddress = item.display_name
   const lat = parseFloat(item.lat)
   const lon = parseFloat(item.lon)
@@ -219,7 +280,6 @@ const initMap = () => {
     map.remove()
     map = null
   }
-
   map = L.map('mapContainer').setView([21.0285, 105.8542], 13)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap',
@@ -268,44 +328,6 @@ const calculateRoute = async () => {
   }
 }
 
-// Thêm state để lưu ảnh QR base64
-const qrDataURL = ref('')
-
-const generateVietQR = async () => {
-  // Thay thông tin của bạn vào đây
-  const BANK_ID = 'MB' // Mã ngân hàng (MB, VCB, TPB...)
-  const ACCOUNT_NO = '0333053420'
-  const TEMPLATE = 'compact' // compact, print, qr_only
-
-  // Tạo nội dung chuyển khoản độc nhất để dễ check (Ví dụ: GD + mã đơn hàng)
-  // Lưu ý: Nội dung không dấu, không ký tự đặc biệt
-  const content = `GOTRANS GD${Math.floor(Math.random() * 10000)}`
-
-  try {
-    const res = await fetch('https://api.vietqr.io/v2/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        accountNo: ACCOUNT_NO,
-        accountName: 'NGUYEN VAN A', // Tên chủ tài khoản (tùy chọn)
-        acqId: BANK_ID, // Bin code ngân hàng (MB là 970422) hoặc dùng tên viết tắt nếu thư viện hỗ trợ
-        addInfo: content,
-        amount: totalPrice.value, // Số tiền từ biến computed
-        template: TEMPLATE,
-      }),
-    })
-
-    const data = await res.json()
-    if (data.code === '00') {
-      qrDataURL.value = data.data.qrDataURL // Chuỗi base64 của ảnh QR
-    }
-  } catch (error) {
-    console.error('Lỗi tạo QR:', error)
-  }
-}
-
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371
   const dLat = (lat2 - lat1) * (Math.PI / 180)
@@ -337,83 +359,9 @@ watch([() => coords.value.pickup, () => coords.value.dropoff], () => {
   if (currentStep.value === 3) distance.value = 0
 })
 
-// ... (Giữ nguyên các import và code cũ)
-
-// --- 1. THÊM STATE LƯU LỖI ---
-const errors = ref({
-  senderName: '',
-  senderPhone: '',
-  receiverName: '',
-  receiverPhone: '',
-  weight: '',
-})
-
-const clearError = (field: keyof typeof errors.value) => {
-  errors.value[field] = ''
-}
-
-// --- 2. HÀM VALIDATE (KIỂM TRA DỮ LIỆU) ---
-const validateStep = (step: number) => {
-  let isValid = true
-
-  // Reset lỗi cũ của bước hiện tại
-  if (step === 1) {
-    errors.value.senderName = ''
-    errors.value.senderPhone = ''
-    errors.value.receiverName = ''
-    errors.value.receiverPhone = ''
-
-    // Validate Người gửi
-    if (!form.value.senderName.trim()) {
-      errors.value.senderName = 'Vui lòng nhập họ tên người gửi'
-      isValid = false
-    }
-
-    // Validate SĐT Người gửi (10 số, toàn bộ là số)
-    if (!form.value.senderPhone) {
-      errors.value.senderPhone = 'Vui lòng nhập số điện thoại'
-      isValid = false
-    } else if (!/^\d{10}$/.test(form.value.senderPhone)) {
-      errors.value.senderPhone = 'SĐT phải bao gồm đúng 10 chữ số'
-      isValid = false
-    }
-
-    // Validate Người nhận
-    if (!form.value.receiverName.trim()) {
-      errors.value.receiverName = 'Vui lòng nhập họ tên người nhận'
-      isValid = false
-    }
-
-    // Validate SĐT Người nhận
-    if (!form.value.receiverPhone) {
-      errors.value.receiverPhone = 'Vui lòng nhập số điện thoại'
-      isValid = false
-    } else if (!/^\d{10}$/.test(form.value.receiverPhone)) {
-      errors.value.receiverPhone = 'SĐT phải bao gồm đúng 10 chữ số'
-      isValid = false
-    }
-  }
-
-  if (step === 2) {
-    errors.value.weight = ''
-    // Validate Khối lượng (> 0)
-    if (!form.value.weight) {
-      errors.value.weight = 'Vui lòng nhập khối lượng'
-      isValid = false
-    } else if (Number(form.value.weight) <= 0) {
-      errors.value.weight = 'Khối lượng phải lớn hơn 0'
-      isValid = false
-    }
-  }
-
-  return isValid
-}
-
-// --- 3. SỬA HÀM NEXTSTEP ---
 const nextStep = () => {
-  // Nếu validate thất bại thì dừng lại, không next
+  // Validate trước khi chuyển bước
   if (!validateStep(currentStep.value)) return
-
   if (currentStep.value < 3) currentStep.value++
 }
 
@@ -421,23 +369,17 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
-// Submit
+// --- SUBMIT VÀO SUPABASE (QUAN TRỌNG: SỬA LỖI KHÔNG HIỂN THỊ DỮ LIỆU) ---
 const handleSubmit = async () => {
-  // 1. Kiểm tra lại lần cuối (dù đã validate ở nextStep nhưng cẩn thận vẫn hơn)
-  if (!distance.value || !form.value.pickupAddress || !form.value.dropoffAddress) {
-    return alert('Thiếu thông tin quãng đường!')
-  }
-
-  // 2. Nếu chọn thanh toán Online và chưa quét xong (logic cũ) -> Hiện QR
+  // 1. Nếu chọn thanh toán Online và chưa quét xong
   if (form.value.paymentMethod === 'online' && !isShowQR.value) {
     isShowQR.value = true
     startCountdown()
-    return // Dừng lại để khách quét mã, chưa lưu DB vội (hoặc lưu status pending tùy logic)
+    return
   }
 
-  // 3. LƯU VÀO SUPABASE
+  // 2. LƯU VÀO SUPABASE
   try {
-    // Lấy user ID hiện tại
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -447,26 +389,32 @@ const handleSubmit = async () => {
       return
     }
 
-    // Tạo mã đơn hàng ngẫu nhiên (VD: DH-123456)
     const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
 
+    // --- ĐOẠN NÀY QUAN TRỌNG NHẤT: Mapping từ form vào cột DB ---
     const { error } = await supabase.from('orders').insert({
       user_id: user.id,
       order_code: orderCode,
-      service_type: form.value.type, // 'standard' hoặc 'express'
+      service_type: form.value.type,
       pickup_address: form.value.pickupAddress,
       dropoff_address: form.value.dropoffAddress,
+      total_price: totalPrice.value,
+      package_type: form.value.packageType,
+      status: 'processing',
+
+      // Các cột thông tin chi tiết (Đây là lý do trước đó bị lỗi ---)
+      sender_name: form.value.senderName,
+      sender_phone: form.value.senderPhone,
+      receiver_name: form.value.receiverName,
+      receiver_phone: form.value.receiverPhone,
       weight: form.value.weight,
       note: form.value.note,
-      total_price: totalPrice.value, // Lấy giá trị từ computed
-      status: 'processing', // Mặc định là đang xử lý
       payment_method: form.value.paymentMethod,
     })
 
     if (error) throw error
 
-    // 4. Nếu lưu thành công -> Chuyển sang màn hình "Thành công"
-    // Dừng đếm ngược QR nếu có
+    // 3. Thành công -> Chuyển bước
     if (timerInterval) clearInterval(timerInterval)
     isShowQR.value = false
     currentStep.value = 4
@@ -483,8 +431,8 @@ const startCountdown = () => {
     countdown.value--
     if (countdown.value <= 0) {
       clearInterval(timerInterval)
-      isShowQR.value = false
-      currentStep.value = 4
+      // Hết giờ tự động coi như xong (hoặc xử lý failed tùy logic)
+      handleSubmit()
     }
   }, 1000)
 }
@@ -500,13 +448,11 @@ const cancelQR = () => {
   })
 }
 
-// CẬP NHẬT: Reset và quay về Dashboard
 const goDashboard = () => {
   resetState()
   router.push('/dashboard')
 }
 
-// CẬP NHẬT: Reset khi rời trang
 onBeforeRouteLeave((to, from, next) => {
   resetState()
   next()
@@ -583,9 +529,9 @@ onUnmounted(() => {
                     v-model="form.senderName"
                     @focus="clearError('senderName')"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.senderName
-                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-200 focus:border-emerald-500',
                     ]"
                   />
@@ -603,9 +549,9 @@ onUnmounted(() => {
                     type="tel"
                     maxlength="10"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.senderPhone
-                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-200 focus:border-emerald-500',
                     ]"
                   />
@@ -615,7 +561,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-
             <div class="space-y-5">
               <div
                 class="flex items-center gap-2 text-orange-500 font-bold text-sm uppercase tracking-wider"
@@ -632,9 +577,9 @@ onUnmounted(() => {
                     v-model="form.receiverName"
                     @focus="clearError('receiverName')"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.receiverName
-                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-200 focus:border-orange-500',
                     ]"
                   />
@@ -652,9 +597,9 @@ onUnmounted(() => {
                     type="tel"
                     maxlength="10"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.receiverPhone
-                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-200 focus:border-orange-500',
                     ]"
                   />
@@ -686,12 +631,11 @@ onUnmounted(() => {
                     v-model="form.weight"
                     @focus="clearError('weight')"
                     type="number"
-                    min="0.1"
-                    step="0.1"
+                    min="1"
                     :class="[
-                      'w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      'w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.weight
-                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        ? 'border-red-500 bg-red-50'
                         : 'border-gray-200 focus:border-emerald-500',
                     ]"
                   />
@@ -699,40 +643,51 @@ onUnmounted(() => {
                 <p v-if="errors.weight" class="text-red-500 text-xs ml-1">{{ errors.weight }}</p>
               </div>
             </div>
-
             <div class="space-y-2">
-              <label class="text-sm font-bold text-slate-700">Loại dịch vụ</label>
-              <div class="grid grid-cols-2 gap-3">
+              <label class="text-sm font-bold text-slate-700">Loại kiện hàng</label>
+
+              <div class="grid grid-cols-2 gap-4">
                 <button
-                  @click="form.type = 'standard'"
+                  type="button"
+                  @click="form.packageType = 'standard'"
+                  class="p-3 rounded-xl border font-medium transition-all duration-200"
                   :class="[
-                    'p-3 rounded-xl border text-sm font-medium transition-all',
-                    form.type === 'standard'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-200',
+                    form.packageType === 'standard'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                      : 'border-gray-200 hover:border-emerald-200 text-slate-600 bg-white',
                   ]"
                 >
                   Tiêu chuẩn
                 </button>
+
                 <button
-                  @click="form.type = 'express'"
+                  type="button"
+                  @click="form.packageType = 'bulky'"
+                  class="p-3 rounded-xl border font-medium transition-all duration-200"
                   :class="[
-                    'p-3 rounded-xl border text-sm font-medium transition-all',
-                    form.type === 'express'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-200',
+                    form.packageType === 'bulky'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                      : 'border-gray-200 hover:border-emerald-200 text-slate-600 bg-white',
                   ]"
                 >
-                  Hỏa tốc
+                  Cồng kềnh
                 </button>
               </div>
+
+              <p class="text-xs text-slate-500 mt-1">
+                {{
+                  form.packageType === 'standard'
+                    ? 'Dành cho hàng hóa nhỏ gọn, kích thước thông thường.'
+                    : 'Dành cho hàng hóa kích thước lớn, chiếm nhiều diện tích.'
+                }}
+              </p>
             </div>
-            <div class="md:col-span-2 space-y-1">
-              <label class="text-sm font-bold text-slate-700">Ghi chú (Tùy chọn)</label>
+            <div class="md:col-span-2">
+              <label class="text-sm font-bold text-slate-700 mb-1 block">Ghi chú (Tùy chọn)</label>
               <textarea
                 v-model="form.note"
-                placeholder="Ví dụ: Hàng dễ vỡ, vui lòng gọi trước..."
-                class="w-full p-3 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none bg-gray-50"
+                placeholder="Ghi chú..."
+                class="w-full p-3 border border-gray-200 bg-gray-50 rounded-xl focus:border-emerald-500 focus:outline-none"
               ></textarea>
             </div>
           </div>
@@ -777,8 +732,8 @@ onUnmounted(() => {
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
-                    }}</span
-                    ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
+                    }}</span>
+                    <span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
                   </div>
                 </div>
               </div>
@@ -811,8 +766,8 @@ onUnmounted(() => {
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
-                    }}</span
-                    ><span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
+                    }}</span>
+                    <span class="text-xs text-slate-500 truncate">{{ item.display_name }}</span>
                   </div>
                 </div>
               </div>
@@ -946,7 +901,6 @@ onUnmounted(() => {
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
-
                 <div
                   class="absolute -top-3 -right-3 bg-red-500 text-white w-14 h-14 rounded-full flex flex-col items-center justify-center font-bold shadow-md animate-bounce border-2 border-white"
                 >
