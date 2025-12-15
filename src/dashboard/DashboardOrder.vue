@@ -1,15 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import {
-  Package,
-  Truck,
-  MapPin,
-  Calendar,
-  Clock,
-  ChevronRight,
-  Search,
-  Filter,
-} from 'lucide-vue-next'
+import { Package, Truck, Calendar, Clock, ChevronRight, Search } from 'lucide-vue-next'
 
 // --- MOCK DATA (Dữ liệu giả lập) ---
 // Sau này bạn sẽ thay thế phần này bằng fetch từ Supabase

@@ -29,7 +29,7 @@
               : 'text-slate-500 hover:bg-gray-50 hover:text-slate-900',
           ]"
         >
-          <div class="flex items-center gap-3"><Package class="w-5 h-5" /> Dịch vụ</div>
+          <div class="flex items-center gap-3"><Layers class="w-5 h-5" /> Dịch vụ</div>
           <ChevronDown
             class="w-4 h-4 transition-transform duration-200"
             :class="{ 'rotate-180': isServicesOpen }"
@@ -58,11 +58,11 @@
       </div>
 
       <RouterLink
-        to="/dashboard/history"
+        to="/dashboard/order"
         active-class="bg-emerald-50 text-emerald-700"
         class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
       >
-        <History class="w-5 h-5" /> Lịch sử
+        <Package class="w-5 h-5" /> Đơn hàng
       </RouterLink>
 
       <RouterLink
@@ -102,7 +102,10 @@ import {
   Package,
   Settings,
   User,
-  ChevronDown, // Import thêm icon mũi tên
+  ChevronDown,
+  Monitor,
+  Layers,
+  Package2, // Import thêm icon mũi tên
 } from 'lucide-vue-next'
 
 // --- 1. Logic cho Dropdown Dịch vụ ---
