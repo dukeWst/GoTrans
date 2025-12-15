@@ -335,9 +335,87 @@ watch(currentStep, async (v) => {
 watch([() => coords.value.pickup, () => coords.value.dropoff], () => {
   if (currentStep.value === 3) distance.value = 0
 })
+
+// ... (Giữ nguyên các import và code cũ)
+
+// --- 1. THÊM STATE LƯU LỖI ---
+const errors = ref({
+  senderName: '',
+  senderPhone: '',
+  receiverName: '',
+  receiverPhone: '',
+  weight: '',
+})
+
+const clearError = (field: keyof typeof errors.value) => {
+  errors.value[field] = ''
+}
+
+// --- 2. HÀM VALIDATE (KIỂM TRA DỮ LIỆU) ---
+const validateStep = (step: number) => {
+  let isValid = true
+
+  // Reset lỗi cũ của bước hiện tại
+  if (step === 1) {
+    errors.value.senderName = ''
+    errors.value.senderPhone = ''
+    errors.value.receiverName = ''
+    errors.value.receiverPhone = ''
+
+    // Validate Người gửi
+    if (!form.value.senderName.trim()) {
+      errors.value.senderName = 'Vui lòng nhập họ tên người gửi'
+      isValid = false
+    }
+
+    // Validate SĐT Người gửi (10 số, toàn bộ là số)
+    if (!form.value.senderPhone) {
+      errors.value.senderPhone = 'Vui lòng nhập số điện thoại'
+      isValid = false
+    } else if (!/^\d{10}$/.test(form.value.senderPhone)) {
+      errors.value.senderPhone = 'SĐT phải bao gồm đúng 10 chữ số'
+      isValid = false
+    }
+
+    // Validate Người nhận
+    if (!form.value.receiverName.trim()) {
+      errors.value.receiverName = 'Vui lòng nhập họ tên người nhận'
+      isValid = false
+    }
+
+    // Validate SĐT Người nhận
+    if (!form.value.receiverPhone) {
+      errors.value.receiverPhone = 'Vui lòng nhập số điện thoại'
+      isValid = false
+    } else if (!/^\d{10}$/.test(form.value.receiverPhone)) {
+      errors.value.receiverPhone = 'SĐT phải bao gồm đúng 10 chữ số'
+      isValid = false
+    }
+  }
+
+  if (step === 2) {
+    errors.value.weight = ''
+    // Validate Khối lượng (> 0)
+    if (!form.value.weight) {
+      errors.value.weight = 'Vui lòng nhập khối lượng'
+      isValid = false
+    } else if (Number(form.value.weight) <= 0) {
+      errors.value.weight = 'Khối lượng phải lớn hơn 0'
+      isValid = false
+    }
+  }
+
+  return isValid
+}
+
+// --- 3. SỬA HÀM NEXTSTEP ---
 const nextStep = () => {
+  // Nếu validate thất bại thì dừng lại, không next
+  if (!validateStep(currentStep.value)) return
+
   if (currentStep.value < 3) currentStep.value++
 }
+
 const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
@@ -452,21 +530,46 @@ onUnmounted(() => {
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">Họ tên</label
-                  ><input
+                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                    >Họ tên <span class="text-red-500">*</span></label
+                  >
+                  <input
                     v-model="form.senderName"
-                    class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
+                    @focus="clearError('senderName')"
+                    :class="[
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      errors.senderName
+                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        : 'border-gray-200 focus:border-emerald-500',
+                    ]"
                   />
+                  <p v-if="errors.senderName" class="text-red-500 text-xs ml-1">
+                    {{ errors.senderName }}
+                  </p>
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">SĐT</label
-                  ><input
+                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                    >SĐT <span class="text-red-500">*</span></label
+                  >
+                  <input
                     v-model="form.senderPhone"
-                    class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
+                    @focus="clearError('senderPhone')"
+                    type="tel"
+                    maxlength="10"
+                    :class="[
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      errors.senderPhone
+                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        : 'border-gray-200 focus:border-emerald-500',
+                    ]"
                   />
+                  <p v-if="errors.senderPhone" class="text-red-500 text-xs ml-1">
+                    {{ errors.senderPhone }}
+                  </p>
                 </div>
               </div>
             </div>
+
             <div class="space-y-5">
               <div
                 class="flex items-center gap-2 text-orange-500 font-bold text-sm uppercase tracking-wider"
@@ -476,18 +579,42 @@ onUnmounted(() => {
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">Họ tên</label
-                  ><input
+                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                    >Họ tên <span class="text-red-500">*</span></label
+                  >
+                  <input
                     v-model="form.receiverName"
-                    class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none"
+                    @focus="clearError('receiverName')"
+                    :class="[
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      errors.receiverName
+                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        : 'border-gray-200 focus:border-orange-500',
+                    ]"
                   />
+                  <p v-if="errors.receiverName" class="text-red-500 text-xs ml-1">
+                    {{ errors.receiverName }}
+                  </p>
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1">SĐT</label
-                  ><input
+                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                    >SĐT <span class="text-red-500">*</span></label
+                  >
+                  <input
                     v-model="form.receiverPhone"
-                    class="w-full pl-3 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none"
+                    @focus="clearError('receiverPhone')"
+                    type="tel"
+                    maxlength="10"
+                    :class="[
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      errors.receiverPhone
+                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        : 'border-gray-200 focus:border-orange-500',
+                    ]"
                   />
+                  <p v-if="errors.receiverPhone" class="text-red-500 text-xs ml-1">
+                    {{ errors.receiverPhone }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -503,18 +630,30 @@ onUnmounted(() => {
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-2">
-              <label class="text-sm font-bold text-slate-700">Khối lượng (kg)</label>
-              <div class="relative group">
-                <Weight
-                  class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"
-                /><input
-                  v-model="form.weight"
-                  type="number"
-                  min="1"
-                  class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
-                />
+              <label class="text-sm font-bold text-slate-700"
+                >Khối lượng (kg) <span class="text-red-500">*</span></label
+              >
+              <div class="space-y-1">
+                <div class="relative group">
+                  <Weight class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    v-model="form.weight"
+                    @focus="clearError('weight')"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    :class="[
+                      'w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl outline-none transition-all',
+                      errors.weight
+                        ? 'border-red-500 focus:border-red-500 bg-red-50'
+                        : 'border-gray-200 focus:border-emerald-500',
+                    ]"
+                  />
+                </div>
+                <p v-if="errors.weight" class="text-red-500 text-xs ml-1">{{ errors.weight }}</p>
               </div>
             </div>
+
             <div class="space-y-2">
               <label class="text-sm font-bold text-slate-700">Loại dịch vụ</label>
               <div class="grid grid-cols-2 gap-3">
@@ -542,11 +681,14 @@ onUnmounted(() => {
                 </button>
               </div>
             </div>
-            <textarea
-              v-model="form.note"
-              placeholder="Ghi chú..."
-              class="w-full p-3 border rounded-xl md:col-span-2"
-            ></textarea>
+            <div class="md:col-span-2 space-y-1">
+              <label class="text-sm font-bold text-slate-700">Ghi chú (Tùy chọn)</label>
+              <textarea
+                v-model="form.note"
+                placeholder="Ví dụ: Hàng dễ vỡ, vui lòng gọi trước..."
+                class="w-full p-3 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none bg-gray-50"
+              ></textarea>
+            </div>
           </div>
         </div>
 
