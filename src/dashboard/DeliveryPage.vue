@@ -18,6 +18,7 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
+import { log } from 'console'
 
 const router = useRouter()
 
@@ -421,12 +422,57 @@ const prevStep = () => {
 }
 
 // Submit
-const handleSubmit = () => {
-  if (form.value.paymentMethod === 'cod') {
-    currentStep.value = 4
-  } else {
+const handleSubmit = async () => {
+  // 1. Kiểm tra lại lần cuối (dù đã validate ở nextStep nhưng cẩn thận vẫn hơn)
+  if (!distance.value || !form.value.pickupAddress || !form.value.dropoffAddress) {
+    return alert('Thiếu thông tin quãng đường!')
+  }
+
+  // 2. Nếu chọn thanh toán Online và chưa quét xong (logic cũ) -> Hiện QR
+  if (form.value.paymentMethod === 'online' && !isShowQR.value) {
     isShowQR.value = true
     startCountdown()
+    return // Dừng lại để khách quét mã, chưa lưu DB vội (hoặc lưu status pending tùy logic)
+  }
+
+  // 3. LƯU VÀO SUPABASE
+  try {
+    // Lấy user ID hiện tại
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      alert('Bạn cần đăng nhập để đặt hàng!')
+      return
+    }
+
+    // Tạo mã đơn hàng ngẫu nhiên (VD: DH-123456)
+    const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
+
+    const { error } = await supabase.from('orders').insert({
+      user_id: user.id,
+      order_code: orderCode,
+      service_type: form.value.type, // 'standard' hoặc 'express'
+      pickup_address: form.value.pickupAddress,
+      dropoff_address: form.value.dropoffAddress,
+      weight: form.value.weight,
+      note: form.value.note,
+      total_price: totalPrice.value, // Lấy giá trị từ computed
+      status: 'processing', // Mặc định là đang xử lý
+      payment_method: form.value.paymentMethod,
+    })
+
+    if (error) throw error
+
+    // 4. Nếu lưu thành công -> Chuyển sang màn hình "Thành công"
+    // Dừng đếm ngược QR nếu có
+    if (timerInterval) clearInterval(timerInterval)
+    isShowQR.value = false
+    currentStep.value = 4
+  } catch (error: any) {
+    console.error('Lỗi lưu đơn hàng:', error)
+    alert('Có lỗi xảy ra: ' + error.message)
   }
 }
 

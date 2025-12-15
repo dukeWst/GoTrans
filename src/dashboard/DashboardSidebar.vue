@@ -96,16 +96,13 @@
 import { ref } from 'vue'
 import Logo from '@/assets/logo.vue'
 import {
-  History,
   LayoutDashboard,
   LogOut,
   Package,
   Settings,
   User,
   ChevronDown,
-  Monitor,
   Layers,
-  Package2, // Import thêm icon mũi tên
 } from 'lucide-vue-next'
 
 // --- 1. Logic cho Dropdown Dịch vụ ---

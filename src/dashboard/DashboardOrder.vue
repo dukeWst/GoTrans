@@ -1,67 +1,86 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Package, Truck, Calendar, Clock, ChevronRight, Search } from 'lucide-vue-next'
+import { supabase } from '@/supabase' // Đảm bảo bạn đã config file này
 
-// --- MOCK DATA (Dữ liệu giả lập) ---
-// Sau này bạn sẽ thay thế phần này bằng fetch từ Supabase
-const mockOrders = [
-  {
-    id: 'DH-7382',
-    serviceType: 'delivery', // delivery | moving
-    status: 'completed', // processing | completed | cancelled
-    date: '15/12/2023',
-    time: '14:30',
-    price: 150000,
-    from: '123 Nguyễn Trãi, Thanh Xuân, Hà Nội',
-    to: '45 Láng Hạ, Đống Đa, Hà Nội',
-  },
-  {
-    id: 'DH-9921',
-    serviceType: 'moving',
-    status: 'processing',
-    date: '16/12/2023',
-    time: '09:00',
-    price: 1200000,
-    from: 'Cầu Giấy, Hà Nội',
-    to: 'Ecopark, Hưng Yên',
-  },
-  {
-    id: 'DH-1102',
-    serviceType: 'delivery',
-    status: 'cancelled',
-    date: '10/12/2023',
-    time: '18:15',
-    price: 55000,
-    from: 'Royal City, Hà Nội',
-    to: 'Times City, Hà Nội',
-  },
-  {
-    id: 'DH-3321',
-    serviceType: 'delivery',
-    status: 'completed',
-    date: '05/12/2023',
-    time: '10:00',
-    price: 85000,
-    from: 'Hồ Gươm Plaza',
-    to: 'Aeon Mall Hà Đông',
-  },
-]
+// --- TYPE DEFINITION ---
+interface Order {
+  id: string
+  displayId: string // ID hiển thị (VD: DH-123)
+  serviceType: string
+  status: string
+  date: string
+  time: string
+  price: number
+  from: string
+  to: string
+}
 
-// State
+// --- STATE ---
 const loading = ref(false)
 const activeFilter = ref('all')
 const searchQuery = ref('')
-const orders = ref(mockOrders)
+const orders = ref<Order[]>([]) // Khởi tạo mảng rỗng
 
-// Filter Logic
+// --- FETCH DATA TỪ SUPABASE ---
+const getOrders = async () => {
+  loading.value = true
+  try {
+    // 1. Lấy user hiện tại
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      console.error('Người dùng chưa đăng nhập')
+      return
+    }
+
+    // 2. Query dữ liệu từ bảng orders
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('user_id', user.id) // Chỉ lấy đơn của user này
+      .order('created_at', { ascending: false }) // Mới nhất lên đầu
+
+    if (error) throw error
+
+    // 3. Map dữ liệu từ DB (snake_case) sang UI (camelCase)
+    if (data) {
+      orders.value = data.map((item: any) => {
+        const dateObj = new Date(item.created_at)
+
+        return {
+          id: item.id, // UUID thực tế để xử lý logic
+          displayId: item.order_code || item.id.slice(0, 8).toUpperCase(), // Mã hiển thị
+          serviceType: item.service_type || 'delivery',
+          status: item.status || 'processing',
+          // Format ngày tháng kiểu Việt Nam
+          date: dateObj.toLocaleDateString('vi-VN'),
+          time: dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          price: item.total_price || 0,
+          from: item.pickup_address || 'Chưa cập nhật',
+          to: item.dropoff_address || 'Chưa cập nhật',
+        }
+      })
+    }
+  } catch (error) {
+    console.error('Lỗi tải đơn hàng:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// --- FILTER LOGIC (Giữ nguyên logic cũ nhưng sửa item.id thành item.displayId) ---
 const filteredOrders = computed(() => {
   return orders.value.filter((order) => {
     // Lọc theo tab trạng thái
     const statusMatch = activeFilter.value === 'all' || order.status === activeFilter.value
-    // Lọc theo tìm kiếm (Mã đơn hoặc địa chỉ)
+
+    // Lọc theo tìm kiếm
     const searchLower = searchQuery.value.toLowerCase()
     const searchMatch =
-      order.id.toLowerCase().includes(searchLower) ||
+      order.displayId.toLowerCase().includes(searchLower) ||
       order.from.toLowerCase().includes(searchLower) ||
       order.to.toLowerCase().includes(searchLower)
 
@@ -69,12 +88,11 @@ const filteredOrders = computed(() => {
   })
 })
 
-// Helper: Format tiền tệ
+// --- HELPERS (Giữ nguyên) ---
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
 }
 
-// Helper: Màu sắc trạng thái
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'completed':
@@ -88,7 +106,6 @@ const getStatusColor = (status: string) => {
   }
 }
 
-// Helper: Label trạng thái
 const getStatusLabel = (status: string) => {
   switch (status) {
     case 'completed':
@@ -102,12 +119,9 @@ const getStatusLabel = (status: string) => {
   }
 }
 
-// Giả lập loading khi vào trang
+// --- LIFECYCLE ---
 onMounted(() => {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-  }, 800)
+  getOrders()
 })
 </script>
 
@@ -117,8 +131,8 @@ onMounted(() => {
       class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
     >
       <div>
-        <h2 class="text-2xl font-bold text-slate-900">Lịch sử hoạt động</h2>
-        <p class="text-slate-500 mt-1">Xem lại các đơn hàng vận chuyển và chuyển nhà.</p>
+        <h2 class="text-2xl font-bold text-slate-900">Đơn hàng của tôi</h2>
+        <p class="text-slate-500 mt-1">Xem các đơn hàng vận chuyển và chuyển nhà.</p>
       </div>
 
       <div class="relative w-full md:w-auto">
@@ -196,7 +210,7 @@ onMounted(() => {
               <h4 class="font-bold text-slate-800 text-sm md:text-base">
                 {{ item.serviceType === 'delivery' ? 'Giao hàng nhanh' : 'Chuyển nhà' }}
               </h4>
-              <span class="text-xs text-slate-500 font-mono">#{{ item.id }}</span>
+              <span class="text-xs text-slate-500 font-mono">#{{ item.displayId }}</span>
             </div>
           </div>
           <span
@@ -255,4 +269,3 @@ onMounted(() => {
   scrollbar-width: none;
 }
 </style>
-<script lang="ts"></script>
