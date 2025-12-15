@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
-import { useRouter } from 'vue-router' // Import Router
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   Package,
   Weight,
@@ -19,7 +19,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
 
-const router = useRouter() // Sử dụng router
+const router = useRouter()
 
 // --- 0. ICON MAP ---
 const pickupIcon = new L.Icon({
@@ -48,8 +48,8 @@ const distance = ref(0)
 const isCalculating = ref(false)
 
 // STATE THANH TOÁN ONLINE
-const isShowQR = ref(false) // Trạng thái hiển thị QR
-const countdown = ref(10) // Đếm ngược 10s
+const isShowQR = ref(false)
+const countdown = ref(10)
 let timerInterval: any = null
 
 // Map Variables
@@ -59,6 +59,9 @@ let markers: L.Marker[] = []
 // --- STATE TÌM KIẾM ---
 const pickupQuery = ref('')
 const dropoffQuery = ref('')
+
+const isSelecting = ref(false)
+
 const pickupSuggestions = ref<any[]>([])
 const dropoffSuggestions = ref<any[]>([])
 const isSearchingPickup = ref(false)
@@ -88,7 +91,37 @@ const form = ref({
   paymentMethod: 'cod',
 })
 
-// --- CÁC HÀM CŨ (GIỮ NGUYÊN) ---
+// --- LOGIC RESET DỮ LIỆU ---
+const resetState = () => {
+  currentStep.value = 1
+  distance.value = 0
+  isCalculating.value = false
+  isShowQR.value = false
+  if (timerInterval) clearInterval(timerInterval)
+
+  if (map) {
+    map.remove()
+    map = null
+    markers = []
+  }
+
+  // Reset form (Giữ thông tin người gửi)
+  form.value.receiverName = ''
+  form.value.receiverPhone = ''
+  form.value.weight = 1
+  form.value.type = 'standard'
+  form.value.note = ''
+  form.value.pickupAddress = ''
+  form.value.dropoffAddress = ''
+  form.value.paymentMethod = 'cod'
+
+  // Reset tìm kiếm
+  pickupQuery.value = ''
+  dropoffQuery.value = ''
+  coords.value = { pickup: null, dropoff: null }
+}
+
+// --- CÁC HÀM XỬ LÝ ---
 const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
   if (!query || query.length < 2) return
   if (type === 'pickup') {
@@ -145,15 +178,20 @@ onMounted(() => {
 })
 
 watch(pickupQuery, (v) => {
+  if (isSelecting.value) return
   clearTimeout(pickupDebounce)
   pickupDebounce = setTimeout(() => fetchNominatim(v, 'pickup'), 800)
 })
+
 watch(dropoffQuery, (v) => {
+  if (isSelecting.value) return
   clearTimeout(dropoffDebounce)
   dropoffDebounce = setTimeout(() => fetchNominatim(v, 'dropoff'), 800)
 })
 
 const selectAddress = (item: any, type: 'pickup' | 'dropoff') => {
+  isSelecting.value = true // <-- 1. Bật cờ lên để chặn watch
+
   const fullAddress = item.display_name
   const lat = parseFloat(item.lat)
   const lon = parseFloat(item.lon)
@@ -169,10 +207,18 @@ const selectAddress = (item: any, type: 'pickup' | 'dropoff') => {
     dropoffSuggestions.value = []
     coords.value.dropoff = [lat, lon]
   }
+
+  nextTick(() => {
+    isSelecting.value = false
+  })
 }
 
 const initMap = () => {
-  if (map) return
+  if (map) {
+    map.remove()
+    map = null
+  }
+
   map = L.map('mapContainer').setView([21.0285, 105.8542], 13)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap',
@@ -192,9 +238,9 @@ const calculateRoute = async () => {
 
   const startMarker = L.marker(start, { icon: pickupIcon })
     .addTo(map!)
-    .bindPopup('Điểm lấy')
+    .bindPopup('🚚 Điểm lấy')
     .openPopup()
-  const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('Điểm giao')
+  const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('📦 Điểm giao')
   markers.push(startMarker, endMarker)
 
   const group = new L.FeatureGroup(markers)
@@ -245,7 +291,6 @@ const totalPrice = computed(() => {
 watch(currentStep, async (v) => {
   if (v === 3) {
     await nextTick()
-    // Chỉ initMap nếu chưa show QR
     if (!isShowQR.value) initMap()
   }
 })
@@ -259,52 +304,51 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
-// --- XỬ LÝ THANH TOÁN & ĐẶT HÀNG ---
+// Submit
 const handleSubmit = () => {
   if (form.value.paymentMethod === 'cod') {
-    // 1. Nếu là COD -> Chuyển thẳng đến bước 4
     currentStep.value = 4
   } else {
-    // 2. Nếu là Online -> Hiện giao diện QR tại bước 3
     isShowQR.value = true
     startCountdown()
   }
 }
 
-// Logic đếm ngược
 const startCountdown = () => {
   countdown.value = 10
   if (timerInterval) clearInterval(timerInterval)
-
   timerInterval = setInterval(() => {
     countdown.value--
     if (countdown.value <= 0) {
       clearInterval(timerInterval)
-      // Hết giờ -> Tắt QR -> Chuyển sang bước 4
       isShowQR.value = false
       currentStep.value = 4
     }
   }, 1000)
 }
 
-// Hủy QR nếu muốn quay lại chọn phương thức khác
 const cancelQR = () => {
   if (timerInterval) clearInterval(timerInterval)
   isShowQR.value = false
-  // Cần init lại map vì DOM có thể đã bị thay đổi
   nextTick(() => {
     map?.remove()
     map = null
     initMap()
-    // Vẽ lại marker nếu cần
     if (coords.value.pickup && coords.value.dropoff) calculateRoute()
   })
 }
 
-// Quay về Dashboard
+// CẬP NHẬT: Reset và quay về Dashboard
 const goDashboard = () => {
+  resetState()
   router.push('/dashboard')
 }
+
+// CẬP NHẬT: Reset khi rời trang
+onBeforeRouteLeave((to, from, next) => {
+  resetState()
+  next()
+})
 
 onUnmounted(() => {
   if (map) {
@@ -676,7 +720,6 @@ onUnmounted(() => {
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
-
                 <div
                   class="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md animate-bounce"
                 >
@@ -688,22 +731,24 @@ onUnmounted(() => {
                 class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
               >
                 <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Ngân hàng</span>
-                  <span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
+                  <span class="text-slate-500 text-sm">Ngân hàng</span
+                  ><span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
                 </div>
                 <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tài khoản</span>
-                  <span class="font-bold text-slate-800">0987 654 321</span>
+                  <span class="text-slate-500 text-sm">Số tài khoản</span
+                  ><span class="font-bold text-slate-800">0333053420</span>
                 </div>
                 <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tiền</span>
-                  <span class="font-bold text-emerald-600 text-lg"
+                  <span class="text-slate-500 text-sm">Số tiền</span
+                  ><span class="font-bold text-emerald-600 text-lg"
                     >{{ totalPrice.toLocaleString() }}đ</span
                   >
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-slate-500 text-sm">Nội dung</span>
-                  <span class="font-bold text-slate-800">GOTRANS {{ profile.phone }}</span>
+                  <span class="text-slate-500 text-sm">Nội dung</span
+                  ><span class="font-bold text-slate-800"
+                    >GOTRANS THANH TOAN {{ profile.phone }}</span
+                  >
                 </div>
               </div>
 
@@ -745,20 +790,20 @@ onUnmounted(() => {
           >
             <h4 class="font-bold text-slate-800 border-b pb-2 mb-2">Chi tiết đơn hàng</h4>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Người gửi:</span>
-              <span class="font-medium text-slate-800">{{ form.senderName }}</span>
+              <span class="text-slate-500">Người gửi:</span
+              ><span class="font-medium text-slate-800">{{ form.senderName }}</span>
             </div>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Người nhận:</span>
-              <span class="font-medium text-slate-800">{{ form.receiverName }}</span>
+              <span class="text-slate-500">Người nhận:</span
+              ><span class="font-medium text-slate-800">{{ form.receiverName }}</span>
             </div>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Tổng tiền:</span>
-              <span class="font-bold text-emerald-600">{{ totalPrice.toLocaleString() }}đ</span>
+              <span class="text-slate-500">Tổng tiền:</span
+              ><span class="font-bold text-emerald-600">{{ totalPrice.toLocaleString() }}đ</span>
             </div>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Thanh toán:</span>
-              <span class="font-medium text-slate-800 uppercase">{{
+              <span class="text-slate-500">Thanh toán:</span
+              ><span class="font-medium text-slate-800 uppercase">{{
                 form.paymentMethod === 'cod' ? 'Tiền mặt' : 'Online'
               }}</span>
             </div>
@@ -781,7 +826,6 @@ onUnmounted(() => {
         >
           <ChevronLeft class="w-5 h-5" /> Quay lại
         </button>
-
         <button
           v-if="currentStep < 3"
           @click="nextStep"
@@ -789,7 +833,6 @@ onUnmounted(() => {
         >
           Tiếp theo <ChevronRight class="w-5 h-5" />
         </button>
-
         <button
           v-else
           @click="handleSubmit"
