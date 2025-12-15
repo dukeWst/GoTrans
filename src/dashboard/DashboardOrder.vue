@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated, onUnmounted } from 'vue'
 import {
   Package,
   Truck,
@@ -14,8 +14,11 @@ import {
   CreditCard,
   Scale,
   FileText,
-  Box, // [MỚI] Icon kiện hàng
-  Container, // [MỚI] Icon hàng cồng kềnh
+  Box,
+  Container,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
 } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
 
@@ -30,17 +33,12 @@ interface Order {
   price: number
   from: string
   to: string
-
-  // Các trường chi tiết
   senderName: string
   senderPhone: string
   receiverName: string
   receiverPhone: string
   weight: number
-
-  // [MỚI] Loại kiện hàng
   packageType: 'standard' | 'bulky'
-
   note: string
   paymentMethod: string
 }
@@ -50,11 +48,67 @@ const loading = ref(false)
 const activeFilter = ref('all')
 const searchQuery = ref('')
 const orders = ref<Order[]>([])
-const selectedOrder = ref<Order | null>(null) // State điều khiển Modal
+const selectedOrder = ref<Order | null>(null)
 
-// --- 3. LẤY DỮ LIỆU TỪ SUPABASE ---
+// State hủy đơn
+const showCancelConfirm = ref(false)
+const isCancelling = ref(false)
+
+// State Toast
+const toast = ref({
+  show: false,
+  message: '',
+  type: 'success' as 'success' | 'error',
+})
+let toastTimeout: any = null
+
+// --- 3. HELPER FUNCTIONS ---
+const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  toast.value.show = false
+  clearTimeout(toastTimeout)
+  setTimeout(() => {
+    toast.value = { show: true, message, type }
+  }, 100)
+  toastTimeout = setTimeout(() => {
+    toast.value.show = false
+  }, 3000)
+}
+
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
+}
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    case 'processing':
+      return 'bg-blue-100 text-blue-700 border-blue-200'
+    case 'cancelled':
+      return 'bg-red-100 text-red-700 border-red-200'
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
+}
+
+const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'Hoàn tất'
+    case 'processing':
+      return 'Đang thực hiện'
+    case 'cancelled':
+      return 'Đã hủy'
+    default:
+      return status
+  }
+}
+
+// --- 4. LẤY DỮ LIỆU TỪ SUPABASE ---
 const getOrders = async () => {
-  loading.value = true
+  // Chỉ hiện loading khi danh sách đang trống để tránh nháy khi cập nhật ngầm
+  if (orders.value.length === 0) loading.value = true
+
   try {
     const {
       data: { user },
@@ -90,10 +144,7 @@ const getOrders = async () => {
           receiverName: item.receiver_name || '---',
           receiverPhone: item.receiver_phone || '---',
           weight: item.weight || 0,
-
-          // [MỚI] Map dữ liệu package_type (mặc định là standard nếu null)
           packageType: item.package_type || 'standard',
-
           note: item.note || 'Không có ghi chú',
           paymentMethod: item.payment_method || 'cod',
         }
@@ -106,7 +157,80 @@ const getOrders = async () => {
   }
 }
 
-// --- 4. LOGIC LỌC VÀ TÌM KIẾM ---
+// --- 5. LOGIC HỦY ĐƠN HÀNG ---
+const requestCancel = () => {
+  showCancelConfirm.value = true
+}
+
+const confirmCancelOrder = async () => {
+  if (!selectedOrder.value) return
+  isCancelling.value = true
+  const targetId = selectedOrder.value.id
+
+  try {
+    // Gọi update và .select() để kiểm tra kết quả trả về từ DB
+    const { data, error } = await supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('id', targetId)
+      .select()
+
+    if (error) throw error
+
+    // Nếu không có dữ liệu trả về => Lỗi quyền (RLS)
+    if (!data || data.length === 0) {
+      throw new Error('Không thể hủy đơn hàng này. Vui lòng kiểm tra quyền truy cập!')
+    }
+
+    // Cập nhật UI ngay lập tức
+    const index = orders.value.findIndex((o) => o.id === targetId)
+    if (index !== -1) {
+      orders.value[index].status = 'cancelled'
+      // Ép Vue re-render mảng (nếu cần thiết)
+      orders.value = [...orders.value]
+    }
+
+    showToast('Đã hủy đơn hàng thành công!', 'success')
+    showCancelConfirm.value = false
+    selectedOrder.value = null // Tắt modal chi tiết
+  } catch (err: any) {
+    console.error(err)
+    showToast('Lỗi: ' + err.message, 'error')
+    showCancelConfirm.value = false
+  } finally {
+    isCancelling.value = false
+  }
+}
+
+// --- 6. LIFECYCLE & REALTIME ---
+let realtimeChannel: any = null
+
+onMounted(() => {
+  // Lấy dữ liệu lần đầu
+  getOrders()
+
+  // Đăng ký lắng nghe thay đổi Realtime từ Supabase
+  realtimeChannel = supabase
+    .channel('realtime-orders')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+      console.log('Database thay đổi:', payload)
+      // Khi có thay đổi (Thêm/Sửa/Xóa), gọi lại API để làm mới danh sách
+      getOrders()
+    })
+    .subscribe()
+})
+
+// Khi quay lại trang này (từ Cache KeepAlive), bắt buộc load lại
+onActivated(() => {
+  getOrders()
+})
+
+// Hủy đăng ký khi component bị hủy hoàn toàn
+onUnmounted(() => {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
+})
+
+// --- 7. LOGIC LỌC ---
 const filteredOrders = computed(() => {
   return orders.value.filter((order) => {
     const statusMatch = activeFilter.value === 'all' || order.status === activeFilter.value
@@ -114,57 +238,20 @@ const filteredOrders = computed(() => {
     const searchMatch =
       order.displayId.toLowerCase().includes(searchLower) ||
       order.from.toLowerCase().includes(searchLower) ||
-      order.to.toLowerCase().includes(searchLower) ||
-      order.senderName.toLowerCase().includes(searchLower) ||
-      order.receiverName.toLowerCase().includes(searchLower)
+      order.to.toLowerCase().includes(searchLower)
 
     return statusMatch && searchMatch
   })
 })
 
-// --- 5. CÁC HÀM BỔ TRỢ (HELPER) ---
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
-}
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    case 'processing':
-      return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'cancelled':
-      return 'bg-red-100 text-red-700 border-red-200'
-    default:
-      return 'bg-gray-100 text-gray-700'
-  }
-}
-
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'Hoàn tất'
-    case 'processing':
-      return 'Đang thực hiện'
-    case 'cancelled':
-      return 'Đã hủy'
-    default:
-      return status
-  }
-}
-
-// --- 6. XỬ LÝ MODAL ---
 const openDetails = (order: Order) => {
   selectedOrder.value = order
 }
 
 const closeDetails = () => {
   selectedOrder.value = null
+  showCancelConfirm.value = false
 }
-
-onMounted(() => {
-  getOrders()
-})
 </script>
 
 <template>
@@ -253,7 +340,6 @@ onMounted(() => {
                 <h4 class="font-bold text-slate-800 text-sm md:text-base">
                   {{ item.serviceType === 'delivery' ? 'Giao hàng nhanh' : 'Chuyển nhà' }}
                 </h4>
-
                 <span
                   v-if="item.packageType === 'bulky'"
                   class="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-200"
@@ -284,21 +370,6 @@ onMounted(() => {
             <div class="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-emerald-500"></div>
             <p class="text-xs text-slate-500 mb-0.5">Điểm đến</p>
             <p class="text-sm font-medium text-slate-800 line-clamp-1">{{ item.to }}</p>
-          </div>
-        </div>
-
-        <div
-          class="mt-4 pt-4 border-t border-gray-50 grid grid-cols-2 gap-4 bg-gray-50/50 p-3 rounded-lg"
-        >
-          <div>
-            <p class="text-[10px] uppercase font-bold text-slate-400 mb-1">Người gửi</p>
-            <p class="text-sm font-bold text-slate-700 truncate">{{ item.senderName }}</p>
-            <p class="text-xs text-slate-500">{{ item.senderPhone }}</p>
-          </div>
-          <div class="text-right">
-            <p class="text-[10px] uppercase font-bold text-slate-400 mb-1">Người nhận</p>
-            <p class="text-sm font-bold text-slate-700 truncate">{{ item.receiverName }}</p>
-            <p class="text-xs text-slate-500">{{ item.receiverPhone }}</p>
           </div>
         </div>
 
@@ -398,14 +469,12 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-4">
               <h4 class="text-sm font-bold text-slate-900 uppercase flex items-center gap-2">
                 <User class="w-4 h-4 text-emerald-600" /> Thông tin liên hệ
               </h4>
-              <div
-                class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm h-full"
-              >
+              <div class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm">
                 <div>
                   <p class="text-xs text-slate-500 mb-1">Người gửi</p>
                   <p class="font-medium text-slate-800">{{ selectedOrder.senderName }}</p>
@@ -432,13 +501,13 @@ onMounted(() => {
                 class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm h-full"
               >
                 <div class="flex justify-between items-center">
-                  <span class="text-sm text-slate-500 flex items-center gap-2">
-                    <component
+                  <span class="text-sm text-slate-500 flex items-center gap-2"
+                    ><component
                       :is="selectedOrder.packageType === 'bulky' ? Container : Box"
                       class="w-4 h-4"
                     />
-                    Loại kiện
-                  </span>
+                    Loại kiện</span
+                  >
                   <span
                     class="font-bold text-xs px-2 py-1 rounded border uppercase"
                     :class="
@@ -446,27 +515,23 @@ onMounted(() => {
                         ? 'bg-orange-50 text-orange-700 border-orange-200'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     "
+                    >{{ selectedOrder.packageType === 'bulky' ? 'Cồng kềnh' : 'Tiêu chuẩn' }}</span
                   >
-                    {{ selectedOrder.packageType === 'bulky' ? 'Cồng kềnh' : 'Tiêu chuẩn' }}
-                  </span>
                 </div>
-
                 <div class="flex justify-between">
                   <span class="text-sm text-slate-500 flex items-center gap-2"
                     ><Scale class="w-4 h-4" /> Khối lượng</span
                   >
                   <span class="font-bold text-slate-800">{{ selectedOrder.weight }} kg</span>
                 </div>
-
                 <div class="flex justify-between">
                   <span class="text-sm text-slate-500 flex items-center gap-2"
                     ><CreditCard class="w-4 h-4" /> Thanh toán</span
                   >
                   <span
                     class="font-bold text-slate-800 uppercase text-xs bg-gray-100 px-2 py-1 rounded"
+                    >{{ selectedOrder.paymentMethod === 'cod' ? 'Tiền mặt' : 'Online' }}</span
                   >
-                    {{ selectedOrder.paymentMethod === 'cod' ? 'Tiền mặt' : 'Online' }}
-                  </span>
                 </div>
                 <div class="pt-2">
                   <p class="text-xs text-slate-500 mb-1 flex items-center gap-1">
@@ -490,20 +555,94 @@ onMounted(() => {
           >
             Đóng
           </button>
+
           <button
             v-if="selectedOrder.status === 'processing'"
+            @click="requestCancel"
             class="px-6 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-100 transition"
           >
-            Hủy đơn
+            Hủy đơn hàng
           </button>
+        </div>
+
+        <div
+          v-if="showCancelConfirm"
+          class="absolute inset-0 z-[60] flex items-center justify-center bg-white/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            class="bg-white p-6 rounded-2xl shadow-2xl border border-red-100 max-w-sm w-full mx-4 text-center transform scale-100 animate-bounce-in"
+          >
+            <div
+              class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"
+            >
+              <AlertTriangle class="w-8 h-8 text-red-600" />
+            </div>
+            <h4 class="text-lg font-bold text-slate-900 mb-2">Xác nhận hủy đơn?</h4>
+            <p class="text-slate-500 text-sm mb-6">
+              Bạn có chắc muốn hủy đơn hàng <b>#{{ selectedOrder.displayId }}</b> không? Hành động
+              này không thể hoàn tác.
+            </p>
+            <div class="flex gap-3">
+              <button
+                @click="showCancelConfirm = false"
+                class="flex-1 py-2.5 bg-gray-100 text-slate-700 font-bold rounded-xl hover:bg-gray-200 transition"
+              >
+                Không
+              </button>
+              <button
+                @click="confirmCancelOrder"
+                :disabled="isCancelling"
+                class="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <span
+                  v-if="isCancelling"
+                  class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+                ></span>
+                {{ isCancelling ? 'Đang hủy...' : 'Đồng ý hủy' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </main>
+
+  <Transition name="toast">
+    <div
+      v-if="toast.show"
+      class="fixed top-32 right-5 z-[100] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border bg-white min-w-[300px]"
+      :class="
+        toast.type === 'success' ? 'border-emerald-500 border-l-4' : 'border-red-500 border-l-4'
+      "
+    >
+      <div
+        class="rounded-full p-1"
+        :class="
+          toast.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+        "
+      >
+        <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5" />
+        <XCircle v-else class="w-5 h-5" />
+      </div>
+
+      <div>
+        <h4
+          class="font-bold text-sm"
+          :class="toast.type === 'success' ? 'text-emerald-800' : 'text-red-800'"
+        >
+          {{ toast.type === 'success' ? 'Thành công' : 'Thất bại' }}
+        </h4>
+        <p class="text-xs text-slate-500">{{ toast.message }}</p>
+      </div>
+
+      <button @click="toast.show = false" class="ml-auto text-slate-400 hover:text-slate-600">
+        <X class="w-4 h-4" />
+      </button>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
-/* Ẩn scrollbar */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -512,7 +651,6 @@ onMounted(() => {
   scrollbar-width: none;
 }
 
-/* Animation cho Modal */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -525,5 +663,47 @@ onMounted(() => {
 }
 .animate-fade-in-up {
   animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Animation cho modal con */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-bounce-in {
+  animation: bounceIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Animation cho Toast */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(30px); /* Trượt từ phải sang */
 }
 </style>

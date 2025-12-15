@@ -46,7 +46,7 @@ const dropoffIcon = new L.Icon({
 const currentStep = ref(1)
 const distance = ref(0)
 const isCalculating = ref(false)
-
+const isSubmitting = ref(false)
 // STATE THANH TOÁN ONLINE
 const isShowQR = ref(false)
 const countdown = ref(120)
@@ -369,14 +369,19 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
-// --- SUBMIT VÀO SUPABASE (QUAN TRỌNG: SỬA LỖI KHÔNG HIỂN THỊ DỮ LIỆU) ---
 const handleSubmit = async () => {
+  // Chặn nếu đang submit
+  if (isSubmitting.value) return
+
   // 1. Nếu chọn thanh toán Online và chưa quét xong
   if (form.value.paymentMethod === 'online' && !isShowQR.value) {
     isShowQR.value = true
     startCountdown()
     return
   }
+
+  // Bật trạng thái đang xử lý (Disable nút ngay lập tức)
+  isSubmitting.value = true
 
   // 2. LƯU VÀO SUPABASE
   try {
@@ -386,12 +391,12 @@ const handleSubmit = async () => {
 
     if (!user) {
       alert('Bạn cần đăng nhập để đặt hàng!')
+      isSubmitting.value = false // Mở lại nút nếu lỗi
       return
     }
 
     const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
 
-    // --- ĐOẠN NÀY QUAN TRỌNG NHẤT: Mapping từ form vào cột DB ---
     const { error } = await supabase.from('orders').insert({
       user_id: user.id,
       order_code: orderCode,
@@ -401,8 +406,6 @@ const handleSubmit = async () => {
       total_price: totalPrice.value,
       package_type: form.value.packageType,
       status: 'processing',
-
-      // Các cột thông tin chi tiết (Đây là lý do trước đó bị lỗi ---)
       sender_name: form.value.senderName,
       sender_phone: form.value.senderPhone,
       receiver_name: form.value.receiverName,
@@ -418,9 +421,12 @@ const handleSubmit = async () => {
     if (timerInterval) clearInterval(timerInterval)
     isShowQR.value = false
     currentStep.value = 4
+
+    // Lưu ý: Không cần set isSubmitting = false ở đây vì đã chuyển trang thành công
   } catch (error: any) {
     console.error('Lỗi lưu đơn hàng:', error)
     alert('Có lỗi xảy ra: ' + error.message)
+    isSubmitting.value = false // Mở lại nút để user thử lại nếu lỗi
   }
 }
 
@@ -1018,10 +1024,14 @@ onUnmounted(() => {
         <button
           v-else
           @click="handleSubmit"
-          :disabled="!distance"
-          class="flex items-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg disabled:opacity-50"
+          :disabled="!distance || isSubmitting"
+          class="flex items-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          Đặt đơn ngay
+          <span
+            v-if="isSubmitting"
+            class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"
+          ></span>
+          <span v-else>Đặt đơn ngay</span>
         </button>
       </div>
     </div>
