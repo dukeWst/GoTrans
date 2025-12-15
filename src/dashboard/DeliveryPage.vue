@@ -49,7 +49,7 @@ const isCalculating = ref(false)
 
 // STATE THANH TOÁN ONLINE
 const isShowQR = ref(false)
-const countdown = ref(10)
+const countdown = ref(120)
 let timerInterval: any = null
 
 // Map Variables
@@ -267,6 +267,44 @@ const calculateRoute = async () => {
   }
 }
 
+// Thêm state để lưu ảnh QR base64
+const qrDataURL = ref('')
+
+const generateVietQR = async () => {
+  // Thay thông tin của bạn vào đây
+  const BANK_ID = 'MB' // Mã ngân hàng (MB, VCB, TPB...)
+  const ACCOUNT_NO = '0333053420'
+  const TEMPLATE = 'compact' // compact, print, qr_only
+
+  // Tạo nội dung chuyển khoản độc nhất để dễ check (Ví dụ: GD + mã đơn hàng)
+  // Lưu ý: Nội dung không dấu, không ký tự đặc biệt
+  const content = `GOTRANS GD${Math.floor(Math.random() * 10000)}`
+
+  try {
+    const res = await fetch('https://api.vietqr.io/v2/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        accountNo: ACCOUNT_NO,
+        accountName: 'NGUYEN VAN A', // Tên chủ tài khoản (tùy chọn)
+        acqId: BANK_ID, // Bin code ngân hàng (MB là 970422) hoặc dùng tên viết tắt nếu thư viện hỗ trợ
+        addInfo: content,
+        amount: totalPrice.value, // Số tiền từ biến computed
+        template: TEMPLATE,
+      }),
+    })
+
+    const data = await res.json()
+    if (data.code === '00') {
+      qrDataURL.value = data.data.qrDataURL // Chuỗi base64 của ảnh QR
+    }
+  } catch (error) {
+    console.error('Lỗi tạo QR:', error)
+  }
+}
+
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371
   const dLat = (lat2 - lat1) * (Math.PI / 180)
@@ -315,7 +353,7 @@ const handleSubmit = () => {
 }
 
 const startCountdown = () => {
-  countdown.value = 10
+  countdown.value = 120
   if (timerInterval) clearInterval(timerInterval)
   timerInterval = setInterval(() => {
     countdown.value--
@@ -716,14 +754,16 @@ onUnmounted(() => {
 
               <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-lg mb-6 relative">
                 <img
-                  :src="`https://img.vietqr.io/image/MB-0987654321-compact.jpg?amount=${totalPrice}&addInfo=GOTRANS ${profile.phone}`"
+                  :src="`https://img.vietqr.io/image/MB-0333053420-compact.jpg?amount=${totalPrice}&addInfo=GOTRANS ${profile.phone}`"
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
+
                 <div
-                  class="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md animate-bounce"
+                  class="absolute -top-3 -right-3 bg-red-500 text-white w-14 h-14 rounded-full flex flex-col items-center justify-center font-bold shadow-md animate-bounce border-2 border-white"
                 >
-                  {{ countdown }}s
+                  <span class="text-xs font-light">còn</span>
+                  <span class="leading-none">{{ countdown }}s</span>
                 </div>
               </div>
 
