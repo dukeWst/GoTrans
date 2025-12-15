@@ -260,7 +260,7 @@ const closeDetails = () => {
       class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
     >
       <div>
-        <h2 class="text-2xl font-bold text-slate-900">Lịch sử hoạt động</h2>
+        <h2 class="text-2xl font-bold text-slate-900">Danh sách đơn hàng</h2>
         <p class="text-slate-500 mt-1">Quản lý các đơn hàng vận chuyển của bạn.</p>
       </div>
       <div class="relative w-full md:w-auto">

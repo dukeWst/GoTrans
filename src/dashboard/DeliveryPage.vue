@@ -454,9 +454,20 @@ const cancelQR = () => {
   })
 }
 
-const goDashboard = () => {
+const isLoadingPage = ref(false)
+
+const goOrderList = async () => {
+  // 1. Bật loading che toàn màn hình
+  isLoadingPage.value = true
+
+  // 2. Đợi một chút để UI kịp cập nhật (tạo cảm giác mượt mà)
+  await new Promise((resolve) => setTimeout(resolve, 300))
+
+  // 3. Reset dữ liệu form
   resetState()
-  router.push('/dashboard')
+
+  // 4. Chuyển trang
+  router.push('/dashboard/order-list')
 }
 
 onBeforeRouteLeave((to, from, next) => {
@@ -998,10 +1009,10 @@ onUnmounted(() => {
           </div>
 
           <button
-            @click="goDashboard"
+            @click="goOrderList"
             class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 shadow-lg transition"
           >
-            <Home class="w-4 h-4" /> Quay về trang chủ
+            <Package class="w-4 h-4" /> Quay về trang danh sách đơn hàng
           </button>
         </div>
       </div>
@@ -1036,6 +1047,23 @@ onUnmounted(() => {
       </div>
     </div>
   </main>
+  <Transition name="fade">
+    <div
+      v-if="isLoadingPage"
+      class="fixed inset-0 z-[9999] bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center"
+    >
+      <div class="relative">
+        <div
+          class="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"
+        ></div>
+        <div class="absolute inset-0 flex items-center justify-center">
+          <Package class="w-6 h-6 text-emerald-600" />
+        </div>
+      </div>
+
+      <p class="mt-4 text-slate-600 font-medium animate-pulse">Đang tải dữ liệu...</p>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -1051,5 +1079,14 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

@@ -58,7 +58,7 @@
       </div>
 
       <RouterLink
-        to="/dashboard/order"
+        to="/dashboard/order-list"
         active-class="bg-emerald-50 text-emerald-700"
         class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-gray-50 hover:text-slate-900 rounded-xl font-medium transition"
       >

@@ -65,9 +65,9 @@ const router = createRouter({
           component: () => import('@/dashboard/DashboardSetting.vue'),
         },
         {
-          path: 'order',
-          name: 'order',
-          component: () => import('@/dashboard/DashboardOrder.vue'),
+          path: 'order-list',
+          name: 'order-list',
+          component: () => import('@/dashboard/DashboardOrderList.vue'),
         },
       ],
     },
