@@ -303,7 +303,7 @@ const goToSettings = (tabName: string) => {
                 v-if="!isEditing"
                 type="button"
                 @click="enableEdit"
-                class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200"
+                class="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
               >
                 <Edit3 class="w-4 h-4" />
                 Chỉnh sửa hồ sơ
