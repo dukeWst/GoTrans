@@ -136,21 +136,9 @@ onMounted(async () => {
           filter: `user_id=eq.${profile.value.id}`, // Chỉ nghe lệnh của chính mình
         },
         (payload) => {
-          console.log('🔔 CÓ BIẾN ĐỘNG TỪ DB!', payload)
-          // Payload trả về sự kiện gì thì cũng tính lại số liệu hết
           fetchStats(profile.value.id)
         },
       )
-      .subscribe((status, err) => {
-        // Kiểm tra trạng thái kết nối
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Đã kết nối Realtime thành công! Đang chờ đơn hàng...')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Lỗi kết nối Realtime:', err)
-        } else if (status === 'TIMED_OUT') {
-          console.warn('⚠️ Kết nối Realtime bị Timeout, đang thử lại...')
-        }
-      })
   }
 })
 

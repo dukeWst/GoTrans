@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  nextTick,
+  onUnmounted,
+  onMounted,
+  onDeactivated,
+  onActivated,
+} from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   Truck,
@@ -23,7 +32,7 @@ import { supabase } from '@/supabase'
 
 const router = useRouter()
 
-// --- 0. ICON MAP ---
+// --- 0. CONFIG ICON MAP ---
 const pickupIcon = new L.Icon({
   iconUrl:
     'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
@@ -44,14 +53,14 @@ const dropoffIcon = new L.Icon({
   shadowSize: [41, 41],
 })
 
-// --- STATE QUẢN LÝ ---
+// --- 1. STATE QUẢN LÝ ---
 const currentStep = ref(1)
 const distance = ref(0)
 const isCalculating = ref(false)
 const isSubmitting = ref(false)
 const isLoadingPage = ref(false)
 
-// STATE THANH TOÁN ONLINE
+// State thanh toán QR
 const isShowQR = ref(false)
 const countdown = ref(120)
 let timerInterval: any = null
@@ -60,7 +69,7 @@ let timerInterval: any = null
 let map: L.Map | null = null
 let markers: L.Marker[] = []
 
-// --- STATE TÌM KIẾM ĐỊA CHỈ ---
+// State tìm kiếm địa chỉ
 const pickupQuery = ref('')
 const dropoffQuery = ref('')
 const isSelecting = ref(false)
@@ -77,19 +86,16 @@ const coords = ref({
   dropoff: null as [number, number] | null,
 })
 
-// --- DỮ LIỆU FORM ---
+// Dữ liệu Form
 const form = ref({
-  senderName: '', // Người liên hệ tại nhà cũ
+  senderName: '',
   senderPhone: '',
-  receiverName: '', // Người liên hệ tại nhà mới
+  receiverName: '',
   receiverPhone: '',
-
-  // Dữ liệu riêng của chuyển nhà
   houseType: 'apartment', // apartment | alley | street
   hasElevator: true,
   items: [] as string[],
   note: '',
-
   pickupAddress: '',
   dropoffAddress: '',
   paymentMethod: 'cod',
@@ -117,7 +123,7 @@ const toggleItem = (item: string) => {
   }
 }
 
-// --- VALIDATION ---
+// Validation Errors
 const errors = ref({
   senderName: '',
   senderPhone: '',
@@ -130,6 +136,116 @@ const clearError = (field: keyof typeof errors.value) => {
   errors.value[field] = ''
 }
 
+// --- 2. RESET STATE (QUAN TRỌNG: Đưa mọi thứ về mặc định) ---
+const resetState = () => {
+  // Reset Step & UI
+  currentStep.value = 1
+  distance.value = 0
+  isCalculating.value = false
+  isSubmitting.value = false
+  isShowQR.value = false
+  countdown.value = 120
+  if (timerInterval) clearInterval(timerInterval)
+
+  // Reset Map
+  if (map) {
+    map.remove()
+    map = null
+  }
+  pickupQuery.value = ''
+  dropoffQuery.value = ''
+  pickupSuggestions.value = []
+  dropoffSuggestions.value = []
+  coords.value = { pickup: null, dropoff: null }
+
+  // Reset Form Data (Xóa sạch)
+  form.value = {
+    senderName: '',
+    senderPhone: '',
+    receiverName: '',
+    receiverPhone: '',
+    houseType: 'apartment',
+    hasElevator: true,
+    items: [],
+    note: '',
+    pickupAddress: '',
+    dropoffAddress: '',
+    paymentMethod: 'cod',
+  }
+
+  // Reset Errors
+  errors.value = {
+    senderName: '',
+    senderPhone: '',
+    receiverName: '',
+    receiverPhone: '',
+    items: '',
+  }
+}
+
+// --- 3. LIFECYCLE HOOKS ---
+
+// Lấy thông tin User để điền vào Form
+const getProfile = async () => {
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    // Nếu lỗi token -> đá về login
+    if (error || !user) {
+      await supabase.auth.signOut()
+      router.push('/login')
+      return
+    }
+
+    // Nếu ok -> Điền tên/sđt người gửi
+    if (user) {
+      const meta = user.user_metadata || {}
+      form.value.senderName = meta.full_name || 'Khách hàng'
+      form.value.senderPhone = user.phone || meta.phone || ''
+    }
+  } catch (error) {
+    console.error(error)
+    router.push('/login')
+  }
+}
+
+// Hook chạy khi mới vào trang lần đầu
+onMounted(() => {
+  getProfile()
+})
+
+// Hook chạy khi rời khỏi trang (Route change)
+onBeforeRouteLeave((to, from, next) => {
+  resetState()
+  next()
+})
+
+// Hook chạy khi Component bị ẩn (Chuyển Tab Dashboard)
+onDeactivated(() => {
+  resetState()
+})
+
+// Hook chạy khi quay lại Component (Active lại Tab)
+onActivated(() => {
+  // Reset trước để đảm bảo sạch sẽ
+  resetState()
+  // Sau đó lấy lại thông tin user để điền cho tiện
+  getProfile()
+})
+
+// Dọn dẹp khi hủy component
+onUnmounted(() => {
+  if (map) {
+    map.remove()
+    map = null
+  }
+  if (timerInterval) clearInterval(timerInterval)
+})
+
+// --- 4. LOGIC VALIDATION ---
 const validateStep = (step: number) => {
   let isValid = true
 
@@ -140,7 +256,7 @@ const validateStep = (step: number) => {
     errors.value.receiverPhone = ''
 
     if (!form.value.senderName.trim()) {
-      errors.value.senderName = 'Vui lòng nhập tên người liên hệ'
+      errors.value.senderName = 'Vui lòng nhập tên'
       isValid = false
     }
     if (!form.value.senderPhone) {
@@ -151,7 +267,7 @@ const validateStep = (step: number) => {
       isValid = false
     }
 
-    // Validate người nhận (có thể copy từ người gửi nếu cần, nhưng bắt buộc nhập để đầy đủ quy trình)
+    // Người nhận (Bắt buộc nhập, không auto-fill)
     if (!form.value.receiverName.trim()) {
       errors.value.receiverName = 'Vui lòng nhập tên người nhận'
       isValid = false
@@ -176,7 +292,7 @@ const validateStep = (step: number) => {
   return isValid
 }
 
-// --- LOGIC MAP & API ---
+// --- 5. LOGIC BẢN ĐỒ & TÌM KIẾM ---
 const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
   if (!query || query.length < 2) return
   if (type === 'pickup') isSearchingPickup.value = true
@@ -196,41 +312,6 @@ const fetchNominatim = async (query: string, type: 'pickup' | 'dropoff') => {
     else isSearchingDropoff.value = false
   }
 }
-const getProfile = async () => {
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
-
-    // QUAN TRỌNG: Nếu có lỗi (Token hỏng) hoặc không có user
-    if (error || !user) {
-      console.warn('Phiên đăng nhập không hợp lệ, đang đăng xuất...', error)
-
-      // 1. Xóa token lỗi trong storage của SDK
-      await supabase.auth.signOut()
-
-      // 2. Đá về trang login
-      router.push('/login')
-      return
-    }
-
-    // Nếu ổn thì gán dữ liệu
-    if (user) {
-      const meta = user.user_metadata || {}
-      form.value.senderName = meta.full_name || 'Khách hàng'
-      form.value.senderPhone = user.phone || meta.phone || ''
-    }
-  } catch (error) {
-    // Catch lỗi sập mạng hoặc lỗi khác
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-}
-
-onMounted(() => {
-  getProfile()
-})
 
 watch(pickupQuery, (v) => {
   if (isSelecting.value) return
@@ -308,7 +389,6 @@ const calculateRoute = async () => {
       throw new Error('No route')
     }
   } catch (e) {
-    // Fallback đường chim bay
     const R = 6371
     const dLat = (end[0] - start[0]) * (Math.PI / 180)
     const dLon = (end[1] - start[1]) * (Math.PI / 180)
@@ -325,22 +405,13 @@ const calculateRoute = async () => {
   }
 }
 
-// --- LOGIC TÍNH GIÁ CHUYỂN NHÀ ---
+// --- 6. LOGIC TÍNH GIÁ ---
 const totalPrice = computed(() => {
   if (!distance.value) return 0
-
-  // 1. Phí mở cửa xe tải (Cao hơn xe máy)
   let total = 350000
-
-  // 2. Phí di chuyển (15k/km - rẻ hơn taxi tải thường)
   total += distance.value * 15000
-
-  // 3. Phí đồ đạc (Ước tính sơ bộ: 50k/món lớn)
   total += form.value.items.length * 50000
-
-  // 4. Phí thang bộ (Nếu không có thang máy: +200k)
   if (!form.value.hasElevator) total += 200000
-
   return Math.round(total)
 })
 
@@ -362,7 +433,7 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
-// --- SUBMIT ---
+// --- 7. SUBMIT ---
 const handleSubmit = async () => {
   if (isSubmitting.value) return
   if (form.value.paymentMethod === 'online' && !isShowQR.value) {
@@ -382,7 +453,6 @@ const handleSubmit = async () => {
       return
     }
 
-    // Gộp thông tin đồ đạc vào ghi chú để lưu DB
     const detailedNote = `
       [CHUYỂN NHÀ TRỌN GÓI]
       - Loại nhà: ${form.value.houseType}
@@ -394,7 +464,7 @@ const handleSubmit = async () => {
     const { error } = await supabase.from('orders').insert({
       user_id: user.id,
       order_code: `MV-${Math.floor(100000 + Math.random() * 900000)}`,
-      service_type: 'moving', // Đánh dấu là chuyển nhà
+      service_type: 'moving',
       pickup_address: form.value.pickupAddress,
       dropoff_address: form.value.dropoffAddress,
       total_price: totalPrice.value,
@@ -442,35 +512,13 @@ const cancelQR = () => {
   })
 }
 
-const resetState = () => {
-  currentStep.value = 1
-  distance.value = 0
-  isCalculating.value = false
-  isShowQR.value = false
-  form.value.items = []
-  form.value.pickupAddress = ''
-  form.value.dropoffAddress = ''
-  coords.value = { pickup: null, dropoff: null }
-}
-
 const goOrderList = async () => {
   isLoadingPage.value = true
   await new Promise((resolve) => setTimeout(resolve, 300))
+  // Reset trước khi chuyển trang
   resetState()
   router.push('/dashboard/order-list')
 }
-
-onBeforeRouteLeave((to, from, next) => {
-  resetState()
-  next()
-})
-onUnmounted(() => {
-  if (map) {
-    map.remove()
-    map = null
-  }
-  if (timerInterval) clearInterval(timerInterval)
-})
 </script>
 
 <template>
