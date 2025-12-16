@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, reactive } from 'vue' // Thêm onUnmounted
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
 import {
@@ -27,13 +27,18 @@ const toast = reactive({
   type: 'success' as 'success' | 'error',
 })
 
+const stats = ref({
+  total: 0,
+  processing: 0,
+})
+
 const showToast = (message: string, type: 'success' | 'error' = 'success') => {
   toast.message = message
   toast.type = type
   toast.show = true
   setTimeout(() => {
     toast.show = false
-  }, 3000) // Tự tắt sau 3 giây
+  }, 3000)
 }
 
 // State cho form
@@ -48,15 +53,31 @@ const profile = ref({
   join_date: '',
 })
 
-// Biến lưu trữ dữ liệu gốc để khôi phục nếu nhập rỗng
+// Biến lưu trữ dữ liệu gốc
 const originalProfile = ref({ ...profile.value })
-
 const defaultAvatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed='
 
-onMounted(async () => {
-  await getProfile()
-})
+// --- 1. HÀM RIÊNG ĐỂ LẤY SỐ LIỆU (Dùng cho cả lúc load trang & Realtime) ---
+const fetchStats = async (userId: string) => {
+  const { data: ordersData, error } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('user_id', userId)
 
+  if (error) {
+    console.error('Error fetching stats:', error)
+    return
+  }
+
+  if (ordersData) {
+    stats.value = {
+      total: ordersData.length,
+      processing: ordersData.filter((o: any) => o.status === 'processing').length,
+    }
+  }
+}
+
+// --- 2. HÀM LẤY THÔNG TIN USER ---
 const getProfile = async () => {
   try {
     loading.value = true
@@ -81,7 +102,10 @@ const getProfile = async () => {
     }
 
     profile.value = userData
-    originalProfile.value = { ...userData } // Lưu bản gốc ban đầu
+    originalProfile.value = { ...userData }
+
+    // Gọi hàm lấy số liệu ngay sau khi có ID
+    await fetchStats(user.id)
   } catch (error) {
     console.error('Error fetching user:', error)
   } finally {
@@ -89,37 +113,72 @@ const getProfile = async () => {
   }
 }
 
-// Hàm bật chế độ chỉnh sửa
+// --- 3. LIFECYCLE & REALTIME SUBSCRIPTION ---
+// --- 3. LIFECYCLE & REALTIME SUBSCRIPTION ---
+let realtimeChannel: any = null
+
+onMounted(async () => {
+  // 1. Lấy dữ liệu lần đầu
+  await getProfile()
+
+  // 2. Nếu có user ID thì bắt đầu nghe
+  if (profile.value.id) {
+    console.log('🔄 Đang thiết lập kênh Realtime cho User:', profile.value.id)
+
+    realtimeChannel = supabase
+      .channel('profile-orders-monitor') // Tên kênh tùy ý
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Nghe tất cả: INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'orders',
+          filter: `user_id=eq.${profile.value.id}`, // Chỉ nghe lệnh của chính mình
+        },
+        (payload) => {
+          console.log('🔔 CÓ BIẾN ĐỘNG TỪ DB!', payload)
+          // Payload trả về sự kiện gì thì cũng tính lại số liệu hết
+          fetchStats(profile.value.id)
+        },
+      )
+      .subscribe((status, err) => {
+        // Kiểm tra trạng thái kết nối
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Đã kết nối Realtime thành công! Đang chờ đơn hàng...')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Lỗi kết nối Realtime:', err)
+        } else if (status === 'TIMED_OUT') {
+          console.warn('⚠️ Kết nối Realtime bị Timeout, đang thử lại...')
+        }
+      })
+  }
+})
+
+onUnmounted(() => {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
+})
+
+// --- CÁC HÀM XỬ LÝ FORM (GIỮ NGUYÊN) ---
 const enableEdit = () => {
-  // Sao lưu dữ liệu hiện tại trước khi cho phép sửa
   originalProfile.value = { ...profile.value }
   isEditing.value = true
 }
 
-// Hàm hủy bỏ chỉnh sửa
 const cancelEdit = () => {
-  // Khôi phục lại dữ liệu gốc
   profile.value = { ...originalProfile.value }
   isEditing.value = false
 }
 
-// Hàm lưu thông tin
 const updateProfile = async () => {
   try {
     saving.value = true
-
-    // LOGIC KIỂM TRA DỮ LIỆU RỖNG
-    // Nếu tên rỗng hoặc chỉ có dấu cách -> Lấy lại tên gốc
     if (!profile.value.full_name || profile.value.full_name.trim() === '') {
       profile.value.full_name = originalProfile.value.full_name
     }
-
-    // Nếu sđt rỗng hoặc chỉ có dấu cách -> Lấy lại sđt gốc
     if (!profile.value.phone || profile.value.phone.trim() === '') {
       profile.value.phone = originalProfile.value.phone
     }
 
-    // Cập nhật lên Supabase
     const { error } = await supabase.auth.updateUser({
       data: {
         full_name: profile.value.full_name,
@@ -130,9 +189,7 @@ const updateProfile = async () => {
 
     if (error) throw error
 
-    // Cập nhật lại bản gốc mới sau khi lưu thành công
     originalProfile.value = { ...profile.value }
-
     showToast('Cập nhật thông tin thành công!', 'success')
     isEditing.value = false
   } catch (error: any) {
@@ -146,7 +203,6 @@ const goToSettings = (tabName: string) => {
   router.push({ path: '/dashboard/settings', query: { tab: tabName } })
 }
 </script>
-
 <template>
   <main class="flex-1 md:ml-64 p-6 lg:p-10 relative">
     <Transition name="toast">
@@ -223,7 +279,7 @@ const goToSettings = (tabName: string) => {
             </div>
             <div class="flex justify-between items-center py-2 text-sm">
               <span class="text-slate-500">Tổng đơn hàng</span>
-              <span class="font-medium text-emerald-600">12</span>
+              <span class="font-medium text-emerald-600">{{ stats.total }}</span>
             </div>
           </div>
         </div>

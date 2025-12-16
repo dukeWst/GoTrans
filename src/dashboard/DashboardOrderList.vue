@@ -19,6 +19,9 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
+  Home, // Thêm icon Home
+  Sofa, // Thêm icon Sofa
+  ArrowUpCircle, // Thêm icon cho thang máy
 } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
 
@@ -41,6 +44,13 @@ interface Order {
   packageType: 'standard' | 'bulky'
   note: string
   paymentMethod: string
+  // Thêm trường cho chuyển nhà
+  movingDetails?: {
+    houseType: string
+    hasElevator: string
+    items: string
+    extraNote: string
+  }
 }
 
 // --- 2. QUẢN LÝ TRẠNG THÁI (STATE) ---
@@ -104,9 +114,55 @@ const getStatusLabel = (status: string) => {
   }
 }
 
+const getHouseTypeLabel = (type: string) => {
+  switch (type) {
+    case 'apartment':
+      return 'Chung cư'
+    case 'alley':
+      return 'Trong ngõ'
+    case 'street':
+      return 'Mặt phố'
+    default:
+      return type
+  }
+}
+
+// Hàm tách thông tin từ Note của Chuyển nhà
+const parseMovingNote = (note: string) => {
+  if (!note) return null
+
+  // Note mẫu:
+  // - Loại nhà: apartment
+  // - Thang máy: Có
+  // - Đồ đạc (...): A, B, C
+
+  const lines = note.split('\n')
+  const houseType =
+    lines
+      .find((l) => l.includes('Loại nhà:'))
+      ?.split(':')[1]
+      ?.trim() || '---'
+  const hasElevator =
+    lines
+      .find((l) => l.includes('Thang máy:'))
+      ?.split(':')[1]
+      ?.trim() || '---'
+  const items =
+    lines
+      .find((l) => l.includes('Đồ đạc'))
+      ?.split(':')[1]
+      ?.trim() || 'Không có đồ đạc liệt kê'
+  const extraNote =
+    lines
+      .find((l) => l.includes('Ghi chú thêm:'))
+      ?.split(':')[1]
+      ?.trim() || ''
+
+  return { houseType, hasElevator, items, extraNote }
+}
+
 // --- 4. LẤY DỮ LIỆU TỪ SUPABASE ---
 const getOrders = async () => {
-  // Chỉ hiện loading khi danh sách đang trống để tránh nháy khi cập nhật ngầm
   if (orders.value.length === 0) loading.value = true
 
   try {
@@ -128,6 +184,13 @@ const getOrders = async () => {
         const dateObj = new Date(item.created_at)
         const rawType = item.service_type
         const isDeliveryGroup = ['standard', 'express', 'delivery'].includes(rawType)
+        const noteContent = item.note || ''
+
+        // Xử lý riêng cho moving house
+        let movingDetails = undefined
+        if (!isDeliveryGroup) {
+          movingDetails = parseMovingNote(noteContent)
+        }
 
         return {
           id: item.id,
@@ -145,8 +208,9 @@ const getOrders = async () => {
           receiverPhone: item.receiver_phone || '---',
           weight: item.weight || 0,
           packageType: item.package_type || 'standard',
-          note: item.note || 'Không có ghi chú',
+          note: noteContent,
           paymentMethod: item.payment_method || 'cod',
+          movingDetails: movingDetails, // Gán data đã parse
         }
       })
     }
@@ -168,7 +232,6 @@ const confirmCancelOrder = async () => {
   const targetId = selectedOrder.value.id
 
   try {
-    // Gọi update và .select() để kiểm tra kết quả trả về từ DB
     const { data, error } = await supabase
       .from('orders')
       .update({ status: 'cancelled' })
@@ -176,23 +239,17 @@ const confirmCancelOrder = async () => {
       .select()
 
     if (error) throw error
+    if (!data || data.length === 0) throw new Error('Lỗi quyền truy cập!')
 
-    // Nếu không có dữ liệu trả về => Lỗi quyền (RLS)
-    if (!data || data.length === 0) {
-      throw new Error('Không thể hủy đơn hàng này. Vui lòng kiểm tra quyền truy cập!')
-    }
-
-    // Cập nhật UI ngay lập tức
     const index = orders.value.findIndex((o) => o.id === targetId)
     if (index !== -1) {
       orders.value[index].status = 'cancelled'
-      // Ép Vue re-render mảng (nếu cần thiết)
       orders.value = [...orders.value]
     }
 
     showToast('Đã hủy đơn hàng thành công!', 'success')
     showCancelConfirm.value = false
-    selectedOrder.value = null // Tắt modal chi tiết
+    selectedOrder.value = null
   } catch (err: any) {
     console.error(err)
     showToast('Lỗi: ' + err.message, 'error')
@@ -206,26 +263,19 @@ const confirmCancelOrder = async () => {
 let realtimeChannel: any = null
 
 onMounted(() => {
-  // Lấy dữ liệu lần đầu
   getOrders()
-
-  // Đăng ký lắng nghe thay đổi Realtime từ Supabase
   realtimeChannel = supabase
     .channel('realtime-orders')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-      console.log('Database thay đổi:', payload)
-      // Khi có thay đổi (Thêm/Sửa/Xóa), gọi lại API để làm mới danh sách
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
       getOrders()
     })
     .subscribe()
 })
 
-// Khi quay lại trang này (từ Cache KeepAlive), bắt buộc load lại
 onActivated(() => {
   getOrders()
 })
 
-// Hủy đăng ký khi component bị hủy hoàn toàn
 onUnmounted(() => {
   if (realtimeChannel) supabase.removeChannel(realtimeChannel)
 })
@@ -239,7 +289,6 @@ const filteredOrders = computed(() => {
       order.displayId.toLowerCase().includes(searchLower) ||
       order.from.toLowerCase().includes(searchLower) ||
       order.to.toLowerCase().includes(searchLower)
-
     return statusMatch && searchMatch
   })
 })
@@ -247,7 +296,6 @@ const filteredOrders = computed(() => {
 const openDetails = (order: Order) => {
   selectedOrder.value = order
 }
-
 const closeDetails = () => {
   selectedOrder.value = null
   showCancelConfirm.value = false
@@ -341,7 +389,7 @@ const closeDetails = () => {
                   {{ item.serviceType === 'delivery' ? 'Giao hàng nhanh' : 'Chuyển nhà' }}
                 </h4>
                 <span
-                  v-if="item.packageType === 'bulky'"
+                  v-if="item.packageType === 'bulky' && item.serviceType === 'delivery'"
                   class="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-200"
                 >
                   Cồng kềnh
@@ -474,7 +522,9 @@ const closeDetails = () => {
               <h4 class="text-sm font-bold text-slate-900 uppercase flex items-center gap-2">
                 <User class="w-4 h-4 text-emerald-600" /> Thông tin liên hệ
               </h4>
-              <div class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm">
+              <div
+                class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm h-full"
+              >
                 <div>
                   <p class="text-xs text-slate-500 mb-1">Người gửi</p>
                   <p class="font-medium text-slate-800">{{ selectedOrder.senderName }}</p>
@@ -493,7 +543,7 @@ const closeDetails = () => {
               </div>
             </div>
 
-            <div class="space-y-4">
+            <div v-if="selectedOrder.serviceType === 'delivery'" class="space-y-4">
               <h4 class="text-sm font-bold text-slate-900 uppercase flex items-center gap-2">
                 <Package class="w-4 h-4 text-emerald-600" /> Kiện hàng & Thanh toán
               </h4>
@@ -501,13 +551,13 @@ const closeDetails = () => {
                 class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm h-full"
               >
                 <div class="flex justify-between items-center">
-                  <span class="text-sm text-slate-500 flex items-center gap-2"
-                    ><component
+                  <span class="text-sm text-slate-500 flex items-center gap-2">
+                    <component
                       :is="selectedOrder.packageType === 'bulky' ? Container : Box"
                       class="w-4 h-4"
                     />
-                    Loại kiện</span
-                  >
+                    Loại kiện
+                  </span>
                   <span
                     class="font-bold text-xs px-2 py-1 rounded border uppercase"
                     :class="
@@ -515,8 +565,9 @@ const closeDetails = () => {
                         ? 'bg-orange-50 text-orange-700 border-orange-200'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     "
-                    >{{ selectedOrder.packageType === 'bulky' ? 'Cồng kềnh' : 'Tiêu chuẩn' }}</span
                   >
+                    {{ selectedOrder.packageType === 'bulky' ? 'Cồng kềnh' : 'Tiêu chuẩn' }}
+                  </span>
                 </div>
                 <div class="flex justify-between">
                   <span class="text-sm text-slate-500 flex items-center gap-2"
@@ -545,6 +596,65 @@ const closeDetails = () => {
                 </div>
               </div>
             </div>
+
+            <div v-else class="space-y-4">
+              <h4 class="text-sm font-bold text-slate-900 uppercase flex items-center gap-2">
+                <Home class="w-4 h-4 text-emerald-600" /> Thông tin chuyển nhà
+              </h4>
+              <div
+                class="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm h-full"
+              >
+                <div class="flex justify-between">
+                  <span class="text-sm text-slate-500 flex items-center gap-2"
+                    ><Home class="w-4 h-4" /> Loại nhà</span
+                  >
+                  <span class="font-bold text-slate-800">{{
+                    getHouseTypeLabel(selectedOrder.movingDetails?.houseType || '')
+                  }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-sm text-slate-500 flex items-center gap-2"
+                    ><ArrowUpCircle class="w-4 h-4" /> Thang máy</span
+                  >
+                  <span class="font-bold text-slate-800">{{
+                    selectedOrder.movingDetails?.hasElevator
+                  }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-sm text-slate-500 flex items-center gap-2"
+                    ><CreditCard class="w-4 h-4" /> Thanh toán</span
+                  >
+                  <span
+                    class="font-bold text-slate-800 uppercase text-xs bg-gray-100 px-2 py-1 rounded"
+                    >{{ selectedOrder.paymentMethod === 'cod' ? 'Tiền mặt' : 'Online' }}</span
+                  >
+                </div>
+
+                <hr class="border-gray-100 my-2" />
+
+                <div class="space-y-2">
+                  <p class="text-xs text-slate-500 flex items-center gap-1 font-bold">
+                    <Sofa class="w-3 h-3" /> Đồ đạc cần chuyển
+                  </p>
+                  <p
+                    class="text-sm text-slate-800 bg-emerald-50/50 p-2 rounded border border-emerald-100 leading-relaxed"
+                  >
+                    {{ selectedOrder.movingDetails?.items }}
+                  </p>
+                </div>
+
+                <div v-if="selectedOrder.movingDetails?.extraNote" class="pt-1">
+                  <p class="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                    <FileText class="w-3 h-3" /> Ghi chú thêm
+                  </p>
+                  <p
+                    class="text-sm text-slate-700 italic bg-gray-50 p-2 rounded border border-gray-100"
+                  >
+                    "{{ selectedOrder.movingDetails?.extraNote }}"
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -555,7 +665,6 @@ const closeDetails = () => {
           >
             Đóng
           </button>
-
           <button
             v-if="selectedOrder.status === 'processing'"
             @click="requestCancel"
@@ -624,7 +733,6 @@ const closeDetails = () => {
         <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5" />
         <XCircle v-else class="w-5 h-5" />
       </div>
-
       <div>
         <h4
           class="font-bold text-sm"
@@ -634,7 +742,6 @@ const closeDetails = () => {
         </h4>
         <p class="text-xs text-slate-500">{{ toast.message }}</p>
       </div>
-
       <button @click="toast.show = false" class="ml-auto text-slate-400 hover:text-slate-600">
         <X class="w-4 h-4" />
       </button>
@@ -650,7 +757,6 @@ const closeDetails = () => {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -664,8 +770,6 @@ const closeDetails = () => {
 .animate-fade-in-up {
   animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
-/* Animation cho modal con */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -677,7 +781,6 @@ const closeDetails = () => {
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
 }
-
 @keyframes bounceIn {
   0% {
     transform: scale(0.9);
@@ -694,16 +797,13 @@ const closeDetails = () => {
 .animate-bounce-in {
   animation: bounceIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-
-/* Animation cho Toast */
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.3s ease;
 }
-
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(30px); /* Trượt từ phải sang */
+  transform: translateX(30px);
 }
 </style>

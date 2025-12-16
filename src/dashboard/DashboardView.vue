@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, onUnmounted } from 'vue' // Thêm onActivated
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
-import { Package, Truck, Plus, ChevronRight, MapPin, Calendar, Clock } from 'lucide-vue-next'
+import { Package, Truck, ChevronRight, Clock, Plus } from 'lucide-vue-next'
 
 const router = useRouter()
 const user = ref<any>(null)
@@ -10,8 +10,8 @@ const loading = ref(true)
 
 // --- STATE DỮ LIỆU ---
 const orders = ref<any[]>([])
-const activeOrder = ref<any>(null) // Đơn hàng đang chạy
-const recentOrders = ref<any[]>([]) // 5 đơn gần nhất
+const activeOrder = ref<any>(null)
+const recentOrders = ref<any[]>([])
 const stats = ref({
   total: 0,
   processing: 0,
@@ -22,7 +22,6 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
 }
 
-// Hàm giả lập tiến độ dựa trên trạng thái (vì DB có thể chưa có trường progress)
 const getProgress = (status: string) => {
   switch (status) {
     case 'pending':
@@ -30,7 +29,7 @@ const getProgress = (status: string) => {
     case 'processing':
       return 50
     case 'shipping':
-      return 80 // Nếu bạn có trạng thái này
+      return 80
     case 'completed':
       return 100
     case 'cancelled':
@@ -53,8 +52,24 @@ const getStatusLabel = (status: string) => {
   }
 }
 
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    case 'processing':
+      return 'bg-blue-100 text-blue-700 border-blue-200'
+    case 'cancelled':
+      return 'bg-red-100 text-red-700 border-red-200'
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
+}
+
 // --- FETCH DATA ---
 const fetchDashboardData = async () => {
+  // Lưu ý: Có thể bỏ loading = true ở đây nếu muốn update ngầm không hiện spinner
+  // loading.value = true
+
   try {
     const {
       data: { session },
@@ -65,7 +80,6 @@ const fetchDashboardData = async () => {
     }
     user.value = session.user
 
-    // Lấy danh sách đơn hàng từ DB
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -77,7 +91,7 @@ const fetchDashboardData = async () => {
     if (data) {
       orders.value = data
 
-      // 1. Tìm đơn hàng Active (Đơn mới nhất đang ở trạng thái processing)
+      // 1. Active Order (Đơn đang xử lý gần nhất)
       const foundActive = data.find(
         (o: any) => o.status === 'processing' || o.status === 'shipping',
       )
@@ -86,7 +100,8 @@ const fetchDashboardData = async () => {
         activeOrder.value = {
           id: foundActive.order_code || foundActive.id.slice(0, 8).toUpperCase(),
           statusLabel: getStatusLabel(foundActive.status),
-          driver: foundActive.driver_name || 'Đang điều phối', // Giả sử DB có trường này hoặc placeholder
+          status: foundActive.status,
+          driver: foundActive.driver_name || 'Đang điều phối',
           vehicle: foundActive.vehicle_info || 'Xe tiêu chuẩn',
           from: foundActive.pickup_address,
           to: foundActive.dropoff_address,
@@ -99,7 +114,7 @@ const fetchDashboardData = async () => {
         activeOrder.value = null
       }
 
-      // 2. Lấy 5 đơn gần nhất cho bảng lịch sử
+      // 2. Recent Orders
       recentOrders.value = data.slice(0, 5).map((item: any) => ({
         id: item.order_code || item.id.slice(0, 8).toUpperCase(),
         date: new Date(item.created_at).toLocaleDateString('vi-VN'),
@@ -111,7 +126,7 @@ const fetchDashboardData = async () => {
         statusLabel: getStatusLabel(item.status),
       }))
 
-      // 3. Tính toán thống kê
+      // 3. Stats
       stats.value = {
         total: data.length,
         processing: data.filter((o: any) => o.status === 'processing').length,
@@ -124,16 +139,28 @@ const fetchDashboardData = async () => {
   }
 }
 
+// --- LIFECYCLE ---
+let realtimeChannel: any = null
+
 onMounted(() => {
   fetchDashboardData()
 
-  // Realtime subscription để cập nhật khi có đơn mới/thay đổi trạng thái
-  const channel = supabase
+  // Realtime subscription: Tự động cập nhật nếu có thay đổi từ DB (ví dụ mở 2 tab)
+  realtimeChannel = supabase
     .channel('dashboard-realtime')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
       fetchDashboardData()
     })
     .subscribe()
+})
+
+// QUAN TRỌNG: Khi quay lại tab này từ OrderList, code này sẽ chạy để lấy số liệu mới
+onActivated(() => {
+  fetchDashboardData()
+})
+
+onUnmounted(() => {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
 })
 </script>
 
@@ -197,7 +224,6 @@ onMounted(() => {
             <div class="space-y-4 relative z-10 my-6 pl-1">
               <div class="flex gap-4 relative">
                 <div class="absolute left-[5.5px] top-3 bottom-0 w-0.5 bg-slate-700 h-full"></div>
-
                 <div class="flex flex-col items-center relative z-10">
                   <div
                     class="w-3 h-3 bg-emerald-500 rounded-full ring-4 ring-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
@@ -244,7 +270,7 @@ onMounted(() => {
 
           <div
             v-else
-            class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center flex flex-col items-center justify-center h-64"
+            class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center flex flex-col items-center justify-center h-64 animate-fade-in"
           >
             <div class="bg-emerald-50 p-4 rounded-full mb-4">
               <Truck class="w-8 h-8 text-emerald-600" />
@@ -253,12 +279,20 @@ onMounted(() => {
             <p class="text-slate-500 mb-6 max-w-xs mx-auto">
               Chưa có đơn hàng nào đang thực hiện. Hãy đặt dịch vụ ngay để trải nghiệm!
             </p>
-            <RouterLink
-              to="/dashboard/services/moving-house"
-              class="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
-            >
-              Đặt dịch vụ mới
-            </RouterLink>
+            <div class="flex gap-4 justify-center mb-4">
+              <RouterLink
+                to="/dashboard/services/moving-house"
+                class="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
+              >
+                Chuyển nhà
+              </RouterLink>
+              <RouterLink
+                to="/dashboard/services/moving-house"
+                class="bg-sky-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-sky-700 transition shadow-lg shadow-emerald-200"
+              >
+                Giao hàng
+              </RouterLink>
+            </div>
           </div>
 
           <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -319,13 +353,8 @@ onMounted(() => {
                     </td>
                     <td class="py-4 text-center">
                       <span
-                        class="px-2.5 py-1 rounded-full text-xs font-bold border"
-                        :class="{
-                          'bg-emerald-50 text-emerald-700 border-emerald-100':
-                            order.status === 'completed',
-                          'bg-blue-50 text-blue-700 border-blue-100': order.status === 'processing',
-                          'bg-red-50 text-red-700 border-red-100': order.status === 'cancelled',
-                        }"
+                        class="px-2.5 py-1 rounded-full text-xs font-bold border capitalize"
+                        :class="getStatusColor(order.status)"
                       >
                         {{ order.statusLabel }}
                       </span>
@@ -432,3 +461,19 @@ onMounted(() => {
     </main>
   </div>
 </template>
+
+<style scoped>
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
