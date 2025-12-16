@@ -94,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import logo from '../../public/logo.png'
+import logo from '../assets/logo.png'
 import {
   LayoutDashboard,
   LogOut,

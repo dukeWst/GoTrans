@@ -118,11 +118,10 @@
 </template>
 
 <script setup lang="ts">
-import Logo from '@/assets/logo.vue' // Đảm bảo bạn có file này hoặc thay bằng <img>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
-import logo from '../../public/logo.png'
+import logo from '../assets/logo.png'
 
 const serviceOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
