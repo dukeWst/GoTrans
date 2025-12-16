@@ -2,8 +2,8 @@
   <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
     <div class="container mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3 cursor-pointer" @click="$router.push('/')">
-        <div class="w-10 h-10 rounded-xl text-white flex items-center justify-center">
-          <Logo />
+        <div class="w-16 h-10 rounded-xl text-white flex items-center justify-center">
+          <img :src="logo" alt="Logo" class="w-16 h-8" />
         </div>
         <div>
           <div class="font-extrabold text-lg text-slate-800 leading-none">GoTrans</div>
@@ -122,6 +122,7 @@ import Logo from '@/assets/logo.vue' // Đảm bảo bạn có file này hoặc 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
+import logo from '../../public/logo.png'
 
 const serviceOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)

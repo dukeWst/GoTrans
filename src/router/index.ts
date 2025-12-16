@@ -71,6 +71,12 @@ const router = createRouter({
         },
       ],
     },
+    {
+      path: '/:pathMatch(.*)*', // Ký tự đại diện bắt tất cả các link không tồn tại
+      name: 'NotFound',
+      component: () => import('@/404/NotFound.vue'), // Đường dẫn tới file vừa tạo
+      meta: { title: '404 - Không tìm thấy trang' },
+    },
 
     // Route 404 (Tùy chọn)
     // { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFound.vue') }

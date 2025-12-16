@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/supabase'
 import { Package, Truck, Plus, ChevronRight } from 'lucide-vue-next'
+import { R } from 'vue-router/dist/router-CWoNjPRp.mjs'
 
 const router = useRouter()
 const user = ref<any>(null)
@@ -176,35 +177,38 @@ onMounted(async () => {
           <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <h3 class="text-lg font-bold mb-4">Đặt dịch vụ mới</h3>
             <div class="space-y-3">
-              <button
-                class="w-full flex items-center p-3 rounded-xl border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50 transition group"
-              >
-                <div
-                  class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 group-hover:bg-emerald-200 transition"
+              <RouterLink to="/dashboard/services/moving-house">
+                <button
+                  class="w-full flex items-center p-3 rounded-xl border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50 transition group"
                 >
-                  <Truck class="w-5 h-5" />
-                </div>
-                <div class="ml-3 text-left">
-                  <p class="font-semibold text-slate-900">Chuyển nhà</p>
-                  <p class="text-xs text-slate-500">Trọn gói, tháo lắp</p>
-                </div>
-                <Plus class="w-5 h-5 text-gray-400 ml-auto group-hover:text-emerald-500" />
-              </button>
-
-              <button
-                class="w-full flex items-center p-3 rounded-xl border border-gray-200 hover:border-sky-500 hover:bg-sky-50 transition group"
-              >
-                <div
-                  class="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center text-sky-600 group-hover:bg-sky-200 transition"
+                  <div
+                    class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 group-hover:bg-emerald-200 transition"
+                  >
+                    <Truck class="w-5 h-5" />
+                  </div>
+                  <div class="ml-3 text-left">
+                    <p class="font-semibold text-slate-900">Chuyển nhà</p>
+                    <p class="text-xs text-slate-500">Trọn gói, tháo lắp</p>
+                  </div>
+                  <Plus class="w-5 h-5 text-gray-400 ml-auto group-hover:text-emerald-500" />
+                </button>
+              </RouterLink>
+              <RouterLink to="/dashboard/services/delivery">
+                <button
+                  class="w-full flex items-center p-3 rounded-xl border border-gray-200 hover:border-sky-500 hover:bg-sky-50 transition group"
                 >
-                  <Package class="w-5 h-5" />
-                </div>
-                <div class="ml-3 text-left">
-                  <p class="font-semibold text-slate-900">Giao hàng</p>
-                  <p class="text-xs text-slate-500">Nội thành siêu tốc</p>
-                </div>
-                <Plus class="w-5 h-5 text-gray-400 ml-auto group-hover:text-sky-500" />
-              </button>
+                  <div
+                    class="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center text-sky-600 group-hover:bg-sky-200 transition"
+                  >
+                    <Package class="w-5 h-5" />
+                  </div>
+                  <button class="ml-3 text-left">
+                    <p class="font-semibold text-slate-900">Giao hàng</p>
+                    <p class="text-xs text-slate-500">Nội thành siêu tốc</p>
+                  </button>
+                  <Plus class="w-5 h-5 text-gray-400 ml-auto group-hover:text-sky-500" />
+                </button>
+              </RouterLink>
             </div>
           </div>
 

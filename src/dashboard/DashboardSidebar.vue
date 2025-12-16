@@ -3,9 +3,9 @@
     class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col fixed h-full z-10 overflow-y-auto"
   >
     <div class="p-8">
-      <RouterLink to="/" class="text-2xl font-extrabold text-emerald-600 flex items-center gap-2">
-        <Logo />
-        <span>GoTrans</span>
+      <RouterLink to="/" class="text-2xl font-extrabold flex items-center gap-2">
+        <img :src="logo" alt="Logo" class="w-16 h-8" />
+        <div><span class="text-emerald-600">Go</span><span>Trans</span></div>
       </RouterLink>
     </div>
 
@@ -94,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import Logo from '@/assets/logo.vue'
+import logo from '../../public/logo.png'
 import {
   LayoutDashboard,
   LogOut,
