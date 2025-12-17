@@ -20,6 +20,18 @@ const router = createRouter({
       meta: { guestOnly: true },
     },
     {
+      path: '/about',
+      name: 'about',
+      component: () => import('@/about/AboutPage.vue'),
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/contact',
+      name: 'contact',
+      component: () => import('@/contact/ContactPage.vue'),
+      meta: { guestOnly: true },
+    },
+    {
       path: '/register',
       name: 'register',
       component: () => import('@/auth/AuthSignUp.vue'),

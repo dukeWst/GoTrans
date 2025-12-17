@@ -47,22 +47,20 @@
               v-if="serviceOpen"
               class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden p-2"
             >
-              <RouterLink
-                to="/services/move"
-                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition"
-                @click="closeModal"
+              <div
+                @click="handleServiceClick('/services/move')"
+                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer"
               >
                 <div class="font-semibold">Chuyển nhà</div>
                 <div class="text-xs text-slate-400 font-normal">Trọn gói & Tháo lắp</div>
-              </RouterLink>
-              <RouterLink
-                to="/services/delivery"
-                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition"
-                @click="closeModal"
+              </div>
+              <div
+                @click="handleServiceClick('/services/delivery')"
+                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer"
               >
                 <div class="font-semibold">Giao hàng</div>
                 <div class="text-xs text-slate-400 font-normal">Nội thành siêu tốc</div>
-              </RouterLink>
+              </div>
             </div>
           </Transition>
         </div>
@@ -115,17 +113,79 @@
       </div>
     </div>
   </header>
+
+  <Transition name="fade">
+    <div
+      v-if="isModalOpen"
+      class="fixed inset-0 z-[100] overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 transition-all duration-300"
+      @click.self="isModalOpen = false"
+    >
+      <Transition name="bounce">
+        <div v-if="isModalOpen" class="relative z-10 w-full max-w-md transform transition-all">
+          <div
+            class="bg-gradient-to-br from-teal-400 to-emerald-600 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden text-center border border-white/20"
+          >
+            <button
+              @click="isModalOpen = false"
+              class="absolute top-4 right-4 bg-white/10 hover:bg-white/20 rounded-full p-1 transition z-50 cursor-pointer"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div
+              class="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"
+            ></div>
+
+            <h3 class="text-3xl font-extrabold mb-1 relative z-10">Đăng nhập ngay</h3>
+            <p class="text-emerald-50 mb-6 text-sm relative z-10">
+              Để nhận mã giảm giá và đặt xe nhanh chóng
+            </p>
+
+            <div
+              class="bg-white/10 rounded-xl p-4 mb-8 backdrop-blur-md border border-white/10 relative z-10"
+            >
+              <p class="font-bold text-2xl text-white">Giảm 20%</p>
+              <p class="text-xs text-emerald-50 uppercase tracking-wide">Cho đơn hàng đầu tiên</p>
+            </div>
+
+            <button
+              @click="navigateToLogin"
+              class="w-full bg-white text-emerald-600 font-bold py-3.5 px-6 rounded-xl shadow-lg hover:bg-emerald-50 transform hover:scale-[1.02] active:scale-95 transition-all relative z-10"
+            >
+              Đăng nhập / Đăng ký
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ChevronDown } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
 import logo from '../assets/logo.png'
 
+const router = useRouter()
 const serviceOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const session = ref<any>(null)
+const isModalOpen = ref(false) // State mới để quản lý Modal
 
 // Logic xử lý User/Session
 const userInitials = computed(() => {
@@ -165,4 +225,52 @@ const handleClickOutside = (e: MouseEvent) => {
     serviceOpen.value = false
   }
 }
+
+// Hàm mới: Xử lý click vào dịch vụ
+const handleServiceClick = (path: string) => {
+  closeModal() // Đóng dropdown dịch vụ
+
+  if (session.value) {
+    // Đã đăng nhập -> Chuyển hướng
+    router.push(path)
+  } else {
+    // Chưa đăng nhập -> Hiển thị Modal
+    isModalOpen.value = true
+  }
+}
+
+// Hàm mới: Chuyển hướng đến trang đăng nhập khi click nút trong modal
+const navigateToLogin = () => {
+  isModalOpen.value = false
+  router.push('/login')
+}
 </script>
+
+<style scoped>
+/* Thêm transition cho Modal */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+.bounce-enter-active {
+  animation: bounce-in 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+.bounce-leave-active {
+  animation: bounce-in 0.2s reverse ease-in;
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+</style>
