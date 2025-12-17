@@ -4,16 +4,6 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
         <div class="space-y-4">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
             <span class="text-xl font-bold tracking-tight">GoTrans</span>
           </div>
           <p class="text-slate-400 text-sm leading-relaxed">

@@ -58,12 +58,12 @@
               </svg>
             </button>
 
-            <a
-              href="#services"
+            <RouterLink
+              to="/about"
               class="px-8 py-4 rounded-2xl font-semibold border border-white/30 hover:bg-white/10 transition backdrop-blur-sm flex items-center gap-2"
             >
-              Tới dịch vụ
-            </a>
+              Về chúng tôi
+            </RouterLink>
           </div>
 
           <div class="pt-6 border-t border-white/10 flex items-center gap-8">

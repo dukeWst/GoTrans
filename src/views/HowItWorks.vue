@@ -44,19 +44,22 @@
         </div>
       </div>
 
-      <div class="mt-16">
+      <RouterLink to="/contact">
+        <div class="mt-16">
         <button
           class="px-8 py-3 bg-white text-emerald-600 rounded-xl font-bold hover:bg-emerald-50 transition shadow-lg"
         >
           Đăng ký tư vấn ngay
         </button>
-      </div>
+        </div>
+      </RouterLink>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { PhoneCall, Calculator, Truck } from 'lucide-vue-next'
+import type { RouterLink } from 'vue-router'
 
 const steps = [
   {

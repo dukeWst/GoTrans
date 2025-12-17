@@ -47,12 +47,13 @@
             </div>
           </div>
         </div>
-
-        <button
-          class="mt-8 border-b-2 border-emerald-500 text-emerald-700 font-bold pb-1 hover:text-emerald-500 transition"
-        >
-          Tìm hiểu thêm về văn hóa GoTrans
-        </button>
+        <RouterLink to="/about">
+          <button
+            class="mt-8 border-b-2 border-emerald-500 text-emerald-700 font-bold pb-1 hover:text-emerald-500 transition"
+          >
+            Tìm hiểu thêm về văn hóa GoTrans
+          </button>
+        </RouterLink>
       </div>
 
       <div class="order-1 md:order-2 relative rounded-3xl overflow-hidden shadow-2xl group">

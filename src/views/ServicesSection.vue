@@ -41,9 +41,11 @@
             </li>
           </ul>
 
-          <button class="mt-4 text-emerald-600 font-bold hover:underline flex items-center">
-            Xem chi tiết <span class="ml-2">→</span>
-          </button>
+          <RouterLink to="/about">
+            <button class="mt-4 text-emerald-600 font-bold hover:underline flex items-center">
+              Xem chi tiết <span class="ml-2">→</span>
+            </button>
+          </RouterLink>
         </div>
       </div>
     </div>
