@@ -1,48 +1,131 @@
-# GoTrans
+# GoTrans - Nền Tảng Dịch Vụ Vận Chuyển
 
-This template should help get you started developing with Vue 3 in Vite.
+GoTrans là một ứng dụng web hiện đại được phát triển để cung cấp các dịch vụ vận chuyển và chuyển nhà, kết nối khách hàng với các tài xế một cách nhanh chóng và tiện lợi.
 
-## Recommended IDE Setup
+![GoTrans Banner](https://via.placeholder.com/1200x400?text=GoTrans+Banner)
+_(Hãy thay thế hình ảnh này bằng banner thực tế của dự án)_
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## 🌟 Tính Năng Chính
 
-## Recommended Browser Setup
+Dự án bao gồm các tính năng cốt lõi sau:
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd) 
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+### 1. Xác Thực Người Dùng (Authentication)
 
-## Type Support for `.vue` Imports in TS
+- **Đăng ký & Đăng nhập**: Hỗ trợ đăng ký và đăng nhập tài khoản người dùng thông qua Supabase/Firebase.
+- **Xác thực Email**: Quy trình xác minh email người dùng (`/verify-email`).
+- **Phân quyền**: Cơ chế bảo vệ route cho khách (Guest) và người dùng đã đăng nhập (User).
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+### 2. Dịch Vụ (Services)
 
-## Customize configuration
+- **Giao Hàng (Delivery Service)**: Tính năng đặt dịch vụ giao hàng nhanh.
+- **Chuyển Nhà (Moving House Service)**: Tính năng đặt dịch vụ chuyển nhà trọn gói.
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+### 3. Bảng Điều Khiển (Dashboard)
 
-## Project Setup
+- **Tổng quan (Overview)**: Xem thông tin chung và trạng thái hoạt động.
+- **Hồ Sơ (Profile)**: Quản lý thông tin cá nhân.
+- **Danh Sách Đơn Hàng (Order List)**: Theo dõi lịch sử và trạng thái đơn hàng.
+- **Cài Đặt (Settings)**: Tùy chỉnh cấu hình tài khoản.
 
-```sh
+### 4. Bản Đồ & Định Vị
+
+- Tích hợp **Leaflet** và **Google Maps** để hiển thị bản đồ, định vị và lộ trình.
+
+### 5. Đa Ngôn Ngữ (i18n)
+
+- Hỗ trợ đa ngôn ngữ với `vue-i18n`.
+
+## 🛠 Công Nghệ Sử Dụng
+
+Dự án được xây dựng dựa trên các công nghệ tiên tiến nhất hiện nay:
+
+| Danh mục             | Công nghệ                                | Phiên bản |
+| :------------------- | :--------------------------------------- | :-------- |
+| **Framework**        | [Vue 3](https://vuejs.org/)              | ^3.5.25   |
+| **Build Tool**       | [Vite](https://vitejs.dev/)              | ^7.2.4    |
+| **Styling**          | [Tailwind CSS](https://tailwindcss.com/) | ^4.1.18   |
+| **State Management** | [Pinia](https://pinia.vuejs.org/)        | ^3.0.4    |
+| **Routing**          | [Vue Router](https://router.vuejs.org/)  | ^4.6.4    |
+| **Backend / Auth**   | [Supabase](https://supabase.com/)        | ^2.87.1   |
+| **Map Integration**  | [Leaflet](https://leafletjs.com/)        | ^1.9.4    |
+| **Icons**            | [Lucide Vue](https://lucide.dev/)        | ^0.561.0  |
+| **Code Quality**     | ESLint, Prettier                         | -         |
+
+## 🚀 Hướng Dẫn Cài Đặt & Chạy Dự Án
+
+### Yêu cầu tiên quyết
+
+- [Node.js](https://nodejs.org/) (Phiên bản dự kiến: ^20.19.0 hoặc >=22.12.0)
+- Trình quản lý gói `npm` hoặc `yarn`.
+
+### Bước 1: Clone dự án
+
+```bash
+git clone https://github.com/username/gotrans.git
+cd gotrans
+```
+
+### Bước 2: Cài đặt dependencies
+
+```bash
 npm install
 ```
 
-### Compile and Hot-Reload for Development
+### Bước 3: Cấu hình biến môi trường
 
-```sh
+Tạo file `.env` tại thư mục gốc và điền các thông tin cấu hình cần thiết (như API Key của Supabase/Firebase, Google Maps, v.v.).
+
+### Bước 4: Chạy môi trường phát triển (Development)
+
+```bash
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+Truy cập ứng dụng tại: `http://localhost:5173`
 
-```sh
+### Bước 5: Build cho môi trường sản xuất (Production)
+
+```bash
 npm run build
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+## 📂 Cấu Trúc Thư Mục
 
-```sh
-npm run lint
 ```
+GoTrans/
+├── public/              # Tài nguyên tĩnh (favicon, images,...)
+├── src/
+│   ├── assets/          # Assets (CSS, images, fonts)
+│   ├── auth/            # Các component và view liên quan đến xác thực (Login, Signup)
+│   ├── components/      # Các component tái sử dụng (Header, Footer, Button,...)
+│   ├── dashboard/       # Giao diện Dashboard và các trang con
+│   ├── contact/         # Trang liên hệ
+│   ├── router/          # Cấu hình Vue Router
+│   ├── stores/          # Pinia stores (quản lý state)
+│   ├── user/            # Quản lý thông tin user
+│   ├── views/           # Các trang chính (Home, About,...)
+│   ├── App.vue          # Component gốc
+│   ├── main.ts          # Entry point của ứng dụng
+│   └── supabase.ts      # Cấu hình kết nối Supabase
+├── .env                 # Biến môi trường
+├── index.html           # File HTML chính
+├── package.json         # Danh sách dependencies và scripts
+├── README.md            # Tài liệu dự án
+└── vite.config.ts       # Cấu hình Vite
+```
+
+## 📸 Hình Ảnh Minh Họa
+
+|                          Trang Chủ                          |                            Dashboard                             |                           Mobile View                           |
+| :---------------------------------------------------------: | :--------------------------------------------------------------: | :-------------------------------------------------------------: |
+| ![Home](https://via.placeholder.com/300x600?text=Home+Page) | ![Dashboard](https://via.placeholder.com/300x600?text=Dashboard) | ![Mobile](https://via.placeholder.com/300x600?text=Mobile+View) |
+
+_(Hãy cập nhật các hình ảnh trên bằng ảnh chụp màn hình thực tế của ứng dụng)_
+
+## 🤝 Đóng Góp
+
+Mọi đóng góp đều được hoan nghênh. Vui lòng tạo Pull Request hoặc mở Issue để thảo luận về các thay đổi.
+
+---
+
+© 2024 GoTrans Project.
