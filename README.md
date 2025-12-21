@@ -2,9 +2,6 @@
 
 GoTrans là một ứng dụng web hiện đại được phát triển để cung cấp các dịch vụ vận chuyển và chuyển nhà, kết nối khách hàng với các tài xế một cách nhanh chóng và tiện lợi.
 
-![GoTrans Banner](https://via.placeholder.com/1200x400?text=GoTrans+Banner)
-_(Hãy thay thế hình ảnh này bằng banner thực tế của dự án)_
-
 ## 🌟 Tính Năng Chính
 
 Dự án bao gồm các tính năng cốt lõi sau:
@@ -114,18 +111,10 @@ GoTrans/
 └── vite.config.ts       # Cấu hình Vite
 ```
 
-## 📸 Hình Ảnh Minh Họa
-
-|                          Trang Chủ                          |                            Dashboard                             |                           Mobile View                           |
-| :---------------------------------------------------------: | :--------------------------------------------------------------: | :-------------------------------------------------------------: |
-| ![Home](https://via.placeholder.com/300x600?text=Home+Page) | ![Dashboard](https://via.placeholder.com/300x600?text=Dashboard) | ![Mobile](https://via.placeholder.com/300x600?text=Mobile+View) |
-
-_(Hãy cập nhật các hình ảnh trên bằng ảnh chụp màn hình thực tế của ứng dụng)_
-
 ## 🤝 Đóng Góp
 
 Mọi đóng góp đều được hoan nghênh. Vui lòng tạo Pull Request hoặc mở Issue để thảo luận về các thay đổi.
 
 ---
 
-© 2024 GoTrans Project.
+© 2025 GoTrans Project.
