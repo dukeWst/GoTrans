@@ -92,8 +92,10 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case 'completed':
       return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    case 'processing':
+    case 'shipping': // Đang thực hiện
       return 'bg-blue-100 text-blue-700 border-blue-200'
+    case 'processing': // Đang xác nhận
+      return 'bg-yellow-100 text-yellow-700 border-yellow-200'
     case 'cancelled':
       return 'bg-red-100 text-red-700 border-red-200'
     default:

@@ -49,7 +49,6 @@ const isCalculating = ref(false)
 const isSubmitting = ref(false)
 // STATE THANH TOÁN ONLINE
 const isShowQR = ref(false)
-const countdown = ref(120)
 let timerInterval: any = null
 
 // Map Variables
@@ -369,31 +368,69 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
+const activeQRId = ref<string | null>(null)
+let qrSubscription: any = null
+
 const handleSubmit = async () => {
-  // Chặn nếu đang submit
   if (isSubmitting.value) return
 
-  // 1. Nếu chọn thanh toán Online và chưa quét xong
-  if (form.value.paymentMethod === 'online' && !isShowQR.value) {
-    isShowQR.value = true
-    startCountdown()
+  // LOGIC THANH TOÁN ONLINE (QR)
+  if (form.value.paymentMethod === 'online') {
+    // Nếu chưa hiển thị QR -> Tạo đơn nháp (waiting_payment) và hiện QR
+    if (!isShowQR.value) {
+       isSubmitting.value = true
+       try {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) { alert('Vui lòng đăng nhập!'); isSubmitting.value = false; return }
+
+          const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
+          
+          // Tạo đơn hàng với trạng thái 'waiting_payment'
+          const { data, error } = await supabase.from('orders').insert({
+            user_id: user.id,
+            order_code: orderCode,
+            service_type: form.value.type,
+            pickup_address: form.value.pickupAddress,
+            dropoff_address: form.value.dropoffAddress,
+            total_price: totalPrice.value,
+            package_type: form.value.packageType,
+            status: 'waiting_payment', // Trạng thái chờ thanh toán
+            sender_name: form.value.senderName,
+            sender_phone: form.value.senderPhone,
+            receiver_name: form.value.receiverName,
+            receiver_phone: form.value.receiverPhone,
+            weight: form.value.weight,
+            note: form.value.note,
+            payment_method: form.value.paymentMethod,
+          }).select().single()
+
+          if (error) throw error
+          if (!data) throw new Error('Không tạo được đơn hàng')
+
+          activeQRId.value = data.id
+          
+          // Bắt đầu lắng nghe sự thay đổi của đơn hàng này
+          listenForPaymentConfirmation(data.id)
+          
+          // Hiển thị QR
+          isShowQR.value = true
+       } catch (e: any) {
+          console.error(e)
+          alert('Lỗi tạo đơn: ' + e.message)
+       } finally {
+          isSubmitting.value = false
+       }
+       return
+    } 
+    // Nếu đã hiện QR, nút này có thể disabled hoặc làm nút "Tôi đã thanh toán" (nhưng ta tự động check realtime)
     return
   }
 
-  // Bật trạng thái đang xử lý (Disable nút ngay lập tức)
+  // LOGIC THANH TOÁN COD (Tiền mặt) -> Tạo đơn luôn với status processing
   isSubmitting.value = true
-
-  // 2. LƯU VÀO SUPABASE
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      alert('Bạn cần đăng nhập để đặt hàng!')
-      isSubmitting.value = false // Mở lại nút nếu lỗi
-      return
-    }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { alert('Bạn cần đăng nhập để đặt hàng!'); isSubmitting.value = false; return }
 
     const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
 
@@ -405,7 +442,7 @@ const handleSubmit = async () => {
       dropoff_address: form.value.dropoffAddress,
       total_price: totalPrice.value,
       package_type: form.value.packageType,
-      status: 'processing',
+      status: 'processing', // COD vào thẳng processing
       sender_name: form.value.senderName,
       sender_phone: form.value.senderPhone,
       receiver_name: form.value.receiverName,
@@ -417,34 +454,52 @@ const handleSubmit = async () => {
 
     if (error) throw error
 
-    // 3. Thành công -> Chuyển bước
-    if (timerInterval) clearInterval(timerInterval)
-    isShowQR.value = false
+    // Thành công
     currentStep.value = 4
-
-    // Lưu ý: Không cần set isSubmitting = false ở đây vì đã chuyển trang thành công
   } catch (error: any) {
     console.error('Lỗi lưu đơn hàng:', error)
     alert('Có lỗi xảy ra: ' + error.message)
-    isSubmitting.value = false // Mở lại nút để user thử lại nếu lỗi
+  } finally {
+     if (currentStep.value !== 4) isSubmitting.value = false
   }
 }
 
-const startCountdown = () => {
-  countdown.value = 120
-  if (timerInterval) clearInterval(timerInterval)
-  timerInterval = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      clearInterval(timerInterval)
-      // Hết giờ tự động coi như xong (hoặc xử lý failed tùy logic)
-      handleSubmit()
-    }
-  }, 1000)
+const listenForPaymentConfirmation = (orderId: string) => {
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+  
+  qrSubscription = supabase
+    .channel(`payment-${orderId}`)
+    .on('postgres_changes', { 
+       event: 'UPDATE', 
+       schema: 'public', 
+       table: 'orders',
+       filter: `id=eq.${orderId}`
+    }, (payload: any) => {
+       if (payload.new && payload.new.status === 'processing') {
+          // Admin đã xác nhận!
+          finishOrder()
+       }
+    })
+    .subscribe()
 }
 
-const cancelQR = () => {
+const finishOrder = () => {
   if (timerInterval) clearInterval(timerInterval)
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+  isShowQR.value = false
+  currentStep.value = 4
+  activeQRId.value = null
+}
+
+const cancelQR = async () => {
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+  
+  // Nếu đã tạo đơn waiting_payment, nên hủy nó đi
+  if (activeQRId.value) {
+     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
+     activeQRId.value = null
+  }
+
   isShowQR.value = false
   nextTick(() => {
     map?.remove()
@@ -918,12 +973,6 @@ onUnmounted(() => {
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
-                <div
-                  class="absolute -top-3 -right-3 bg-red-500 text-white w-14 h-14 rounded-full flex flex-col items-center justify-center font-bold shadow-md animate-bounce border-2 border-white"
-                >
-                  <span class="text-xs font-light">còn</span>
-                  <span class="leading-none">{{ countdown }}s</span>
-                </div>
               </div>
 
               <div
