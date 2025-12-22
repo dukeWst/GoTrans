@@ -105,8 +105,10 @@ const getStatusLabel = (status: string) => {
   switch (status) {
     case 'completed':
       return 'Hoàn tất'
-    case 'processing':
+    case 'shipping':
       return 'Đang thực hiện'
+    case 'processing':
+      return 'Đang xác nhận'
     case 'cancelled':
       return 'Đã hủy'
     default:
@@ -280,16 +282,56 @@ onUnmounted(() => {
   if (realtimeChannel) supabase.removeChannel(realtimeChannel)
 })
 
-// --- 7. LOGIC LỌC ---
+// --- TABS & FILTER ---
+
+
+const tabs = computed(() => {
+    const all = orders.value.length
+    const processing = orders.value.filter(o => o.status === 'processing').length
+    const shipping = orders.value.filter(o => o.status === 'shipping').length
+    const completed = orders.value.filter(o => o.status === 'completed').length
+    const cancelled = orders.value.filter(o => o.status === 'cancelled').length
+
+    return [
+        { id: 'all', label: `Tất cả (${all})` },
+        { id: 'processing', label: `Chờ xác nhận (${processing})` },
+        { id: 'shipping', label: `Đang thực hiện (${shipping})` },
+        { id: 'completed', label: `Đã hoàn thành (${completed})` },
+        { id: 'cancelled', label: `Đã hủy (${cancelled})` },
+    ]
+})
+
 const filteredOrders = computed(() => {
-  return orders.value.filter((order) => {
-    const statusMatch = activeFilter.value === 'all' || order.status === activeFilter.value
-    const searchLower = searchQuery.value.toLowerCase()
+  let filteredByTab = []
+  
+  switch (activeFilter.value) {
+    case 'all':
+      filteredByTab = orders.value
+      break
+    case 'processing':
+      filteredByTab = orders.value.filter(o => o.status === 'processing')
+      break
+    case 'shipping':
+      filteredByTab = orders.value.filter(o => o.status === 'shipping')
+      break
+    case 'completed':
+      filteredByTab = orders.value.filter(o => o.status === 'completed')
+      break
+    case 'cancelled':
+      filteredByTab = orders.value.filter(o => o.status === 'cancelled')
+      break
+    default:
+      filteredByTab = orders.value
+  }
+
+  // Now apply the search filter to the tab-filtered orders
+  const searchLower = searchQuery.value.toLowerCase()
+  return filteredByTab.filter((order) => {
     const searchMatch =
       order.displayId.toLowerCase().includes(searchLower) ||
       order.from.toLowerCase().includes(searchLower) ||
       order.to.toLowerCase().includes(searchLower)
-    return statusMatch && searchMatch
+    return searchMatch
   })
 })
 
@@ -325,12 +367,7 @@ const closeDetails = () => {
     <div class="mb-6 overflow-x-auto pb-2 scrollbar-hide">
       <div class="flex gap-2 min-w-max">
         <button
-          v-for="tab in [
-            { id: 'all', label: 'Tất cả' },
-            { id: 'processing', label: 'Đang thực hiện' },
-            { id: 'completed', label: 'Hoàn tất' },
-            { id: 'cancelled', label: 'Đã hủy' },
-          ]"
+          v-for="tab in tabs"
           :key="tab.id"
           @click="activeFilter = tab.id"
           class="px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200 border"
