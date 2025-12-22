@@ -29,6 +29,7 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
+import { useRoute } from 'vue-router'
 
 const router = useRouter()
 
@@ -62,8 +63,8 @@ const isLoadingPage = ref(false)
 
 // State thanh toán QR
 const isShowQR = ref(false)
-const countdown = ref(120)
-let timerInterval: any = null
+const activeQRId = ref<string | null>(null)
+let qrSubscription: any = null
 
 // Map Variables
 let map: L.Map | null = null
@@ -144,8 +145,6 @@ const resetState = () => {
   isCalculating.value = false
   isSubmitting.value = false
   isShowQR.value = false
-  countdown.value = 120
-  if (timerInterval) clearInterval(timerInterval)
 
   // Reset Map
   if (map) {
@@ -156,6 +155,8 @@ const resetState = () => {
   dropoffQuery.value = ''
   pickupSuggestions.value = []
   dropoffSuggestions.value = []
+  isSearchingPickup.value = false
+  isSearchingDropoff.value = false
   coords.value = { pickup: null, dropoff: null }
 
   // Reset Form Data (Xóa sạch)
@@ -234,7 +235,90 @@ onActivated(() => {
   resetState()
   // Sau đó lấy lại thông tin user để điền cho tiện
   getProfile()
+  // Check resume order
+  checkResumeOrder()
 })
+
+const route = useRoute()
+
+const checkResumeOrder = async () => {
+  const resumeId = route.query.resumeOrder
+  if (!resumeId) return
+
+  isLoadingPage.value = true
+  try {
+     const { data, error } = await supabase.from('orders').select('*').eq('id', resumeId).single()
+     if (error || !data) return
+     if (data.status !== 'waiting_payment') return
+
+     // Populate Form
+     form.value.senderName = data.sender_name
+     form.value.senderPhone = data.sender_phone
+     form.value.receiverName = data.receiver_name
+     form.value.receiverPhone = data.receiver_phone
+     form.value.pickupAddress = data.pickup_address
+     form.value.dropoffAddress = data.dropoff_address
+     form.value.paymentMethod = data.payment_method
+     form.value.note = data.note
+     
+     // Parse note for items/house details if simpler text format isn't used
+     // Assuming simple restoration for now or parsing if needed. 
+     // Since Note is a string: "..." we might need to be careful if we rely on it for UI "Items selected".
+     // For now, let's trust the text fields are most important for the QR.
+     
+     // Force Step 3
+     currentStep.value = 3
+     activeQRId.value = data.id 
+     isShowQR.value = true
+     
+     // Trigger Map Init if needed (though QR hides map)
+     
+     // Recalculate distance/price from DB or re-run logic? 
+     // Better to use price from DB for consistency
+     // We can override totalPrice computed if we want, OR just let user re-verify. 
+     // But to show correct QR amount, we need the price.
+     // Let's rely on standard logic -> We need coords to calculate distance to calculate price.
+     // So we simply set addresses and trigger fetch?
+     // Better: just fetch coords from nominatim again or store them? DB doesn't have coords.
+     // We will try to fetch coords from addresses to restore distance.
+     if (form.value.pickupAddress) await fetchNominatim(form.value.pickupAddress, 'pickup')
+     if (form.value.dropoffAddress) await fetchNominatim(form.value.dropoffAddress, 'dropoff')
+     // select first result logic? Or just use address string.
+     // Actually, without coords, we can't show map path. 
+     // Let's try to geocode the addresses.
+     
+     await restoreCoordsFromAddress(form.value.pickupAddress, 'pickup')
+     await restoreCoordsFromAddress(form.value.dropoffAddress, 'dropoff')
+     
+     if (coords.value.pickup && coords.value.dropoff) {
+       await calculateRoute()
+     }
+
+     // Simulate smooth loading for 0.3s
+     await new Promise(resolve => setTimeout(resolve, 300))
+
+  } catch (e) {
+    console.error(e)
+  } finally {
+    isLoadingPage.value = false
+  }
+}
+
+const restoreCoordsFromAddress = async (address: string, type: 'pickup' | 'dropoff') => {
+  if (!address) return
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+  try {
+     const res = await fetch(url)
+     const data = await res.json()
+     if (data && data.length > 0) {
+        const item = data[0]
+        const lat = parseFloat(item.lat)
+        const lon = parseFloat(item.lon)
+        if (type === 'pickup') coords.value.pickup = [lat, lon]
+        else coords.value.dropoff = [lat, lon]
+     }
+  } catch {}
+}
 
 // Dọn dẹp khi hủy component
 onUnmounted(() => {
@@ -242,7 +326,6 @@ onUnmounted(() => {
     map.remove()
     map = null
   }
-  if (timerInterval) clearInterval(timerInterval)
 })
 
 // --- 4. LOGIC VALIDATION ---
@@ -436,12 +519,72 @@ const prevStep = () => {
 // --- 7. SUBMIT ---
 const handleSubmit = async () => {
   if (isSubmitting.value) return
+  // 1. Nếu là Online và chưa có đơn (chưa hiện QR) -> Tạo đơn waiting_payment
   if (form.value.paymentMethod === 'online' && !isShowQR.value) {
-    isShowQR.value = true
-    startCountdown()
+    isSubmitting.value = true
+    try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { alert('Bạn cần đăng nhập!'); isSubmitting.value = false; return }
+
+        const detailedNote = `
+          [CHUYỂN NHÀ TRỌN GÓI]
+          - Loại nhà: ${form.value.houseType}
+          - Thang máy: ${form.value.hasElevator ? 'Có' : 'Không'}
+          - Đồ đạc (${form.value.items.length} món): ${form.value.items.join(', ')}
+          - Ghi chú thêm: ${form.value.note}
+        `.trim()
+
+        const { data, error } = await supabase.from('orders').insert({
+          user_id: user.id,
+          order_code: `MV-${Math.floor(100000 + Math.random() * 900000)}`,
+          service_type: 'moving',
+          pickup_address: form.value.pickupAddress,
+          dropoff_address: form.value.dropoffAddress,
+          total_price: totalPrice.value,
+          status: 'waiting_payment', // <--- QUAN TRỌNG
+          sender_name: form.value.senderName,
+          sender_phone: form.value.senderPhone,
+          receiver_name: form.value.receiverName,
+          receiver_phone: form.value.receiverPhone,
+          note: detailedNote,
+          payment_method: form.value.paymentMethod,
+        }).select().single()
+
+        if (error) throw error
+        
+        activeQRId.value = data.id
+        isShowQR.value = true
+    } catch (e: any) {
+        alert('Lỗi: ' + e.message)
+    } finally {
+        isSubmitting.value = false
+    }
     return
   }
 
+  // 2. Nếu ĐÃ có đơn (đang hiện QR) và user bấm "Đã thanh toán" -> Update thành processing
+  if (form.value.paymentMethod === 'online' && isShowQR.value && activeQRId.value) {
+      isSubmitting.value = true
+      try {
+          const { error } = await supabase.from('orders')
+            .update({ status: 'processing' })
+            .eq('id', activeQRId.value)
+          
+          if (error) throw error
+          
+          // Success
+          isShowQR.value = false
+          activeQRId.value = null
+          currentStep.value = 4
+      } catch (e: any) {
+          alert('Lỗi cập nhật: ' + e.message)
+      } finally {
+          isSubmitting.value = false
+      }
+      return
+  }
+
+  // 3. Nếu là COD -> Tạo đơn processing luôn
   isSubmitting.value = true
   try {
     const {
@@ -479,7 +622,6 @@ const handleSubmit = async () => {
 
     if (error) throw error
 
-    if (timerInterval) clearInterval(timerInterval)
     isShowQR.value = false
     currentStep.value = 4
   } catch (error: any) {
@@ -489,20 +631,12 @@ const handleSubmit = async () => {
   }
 }
 
-const startCountdown = () => {
-  countdown.value = 120
-  if (timerInterval) clearInterval(timerInterval)
-  timerInterval = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      clearInterval(timerInterval)
-      handleSubmit()
-    }
-  }, 1000)
-}
-
-const cancelQR = () => {
-  if (timerInterval) clearInterval(timerInterval)
+const cancelQR = async () => {
+  // Nếu huỷ khi đang thanh toán online -> Huỷ đơn waiting_payment
+  if (activeQRId.value) {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
+      activeQRId.value = null
+  }
   isShowQR.value = false
   nextTick(() => {
     map?.remove()
@@ -945,11 +1079,28 @@ const goOrderList = async () => {
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
-                <div
-                  class="absolute -top-3 -right-3 bg-red-500 text-white w-14 h-14 rounded-full flex flex-col items-center justify-center font-bold shadow-md animate-bounce border-2 border-white"
-                >
-                  <span class="text-xs font-light">còn</span
-                  ><span class="leading-none">{{ countdown }}s</span>
+              </div>
+
+              <div
+                class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
+              >
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Ngân hàng</span
+                  ><span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
+                </div>
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Số tài khoản</span
+                  ><span class="font-bold text-slate-800">0333053420</span>
+                </div>
+                <div class="flex justify-between border-b border-slate-200 pb-2">
+                  <span class="text-slate-500 text-sm">Số tiền</span
+                  ><span class="font-bold text-emerald-600 text-lg"
+                    >{{ totalPrice.toLocaleString() }}đ</span
+                  >
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-500 text-sm">Nội dung</span
+                  ><span class="font-bold text-slate-800">MOVING {{ form.senderPhone }}</span>
                 </div>
               </div>
               <div class="flex gap-3">
@@ -960,9 +1111,10 @@ const goOrderList = async () => {
                   Hủy bỏ
                 </button>
                 <button
-                  class="flex items-center gap-2 px-6 py-2 bg-emerald-50 text-emerald-700 rounded-lg font-bold"
+                  @click="handleSubmit"
+                  class="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold transition shadow-lg"
                 >
-                  <Clock class="w-4 h-4 animate-spin" /> Đang chờ...
+                  <CheckCircle class="w-4 h-4" /> Đã thanh toán
                 </button>
               </div>
             </div>

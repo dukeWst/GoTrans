@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, onMounted, onActivated } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   Package,
@@ -12,9 +12,8 @@ import {
   Wallet,
   CreditCard,
   QrCode,
-  Clock,
-  Home,
 } from 'lucide-vue-next'
+import { useRoute } from 'vue-router'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
@@ -49,7 +48,6 @@ const isCalculating = ref(false)
 const isSubmitting = ref(false)
 // STATE THANH TOÁN ONLINE
 const isShowQR = ref(false)
-let timerInterval: any = null
 
 // Map Variables
 let map: L.Map | null = null
@@ -110,7 +108,7 @@ const resetState = () => {
   distance.value = 0
   isCalculating.value = false
   isShowQR.value = false
-  if (timerInterval) clearInterval(timerInterval)
+
 
   if (map) {
     map.remove()
@@ -131,6 +129,12 @@ const resetState = () => {
   // Reset tìm kiếm
   pickupQuery.value = ''
   dropoffQuery.value = ''
+  pickupSuggestions.value = []
+  dropoffSuggestions.value = []
+  isSearchingPickup.value = false
+  isSearchingDropoff.value = false
+  notFoundPickup.value = false
+  notFoundDropoff.value = false
   coords.value = { pickup: null, dropoff: null }
 }
 
@@ -235,9 +239,133 @@ const getProfile = async () => {
   }
 }
 
+const route = useRoute()
+
 onMounted(() => {
   getProfile()
+  // Restore payment state nếu có
+  restorePaymentState()
+  // Nếu không có payment state, check resume order
+  if (!activeQRId.value) {
+    checkResumeOrder()
+  }
 })
+
+onActivated(() => {
+  // Restore payment state if available (keeps user in payment view)
+  restorePaymentState()
+
+  // Nếu có query param resumeOrder, luôn gọi checkResumeOrder để tải dữ liệu mới nhất
+  if (route.query.resumeOrder) {
+    checkResumeOrder()
+    return
+  }
+
+  // Nếu không có active payment đang chạy, reset và load profile
+  if (!activeQRId.value) {
+    resetState()
+    getProfile()
+    checkResumeOrder()
+  }
+})
+
+const restorePaymentState = () => {
+  const savedOrderId = sessionStorage.getItem('activePaymentOrderId')
+  if (savedOrderId) {
+    activeQRId.value = savedOrderId
+    isShowQR.value = true
+    currentStep.value = 3
+    // Restart payment confirmation listener
+    listenForPaymentConfirmation(savedOrderId)
+  }
+}
+
+const checkResumeOrder = async () => {
+  const resumeId = route.query.resumeOrder
+  if (!resumeId) return
+
+  isLoadingPage.value = true
+  try {
+     const { data, error } = await supabase.from('orders').select('*').eq('id', resumeId).single()
+     if (error || !data) return
+     if (data.status !== 'waiting_payment') return
+
+     form.value.senderName = data.sender_name
+     form.value.senderPhone = data.sender_phone
+     form.value.receiverName = data.receiver_name
+     form.value.receiverPhone = data.receiver_phone
+     form.value.pickupAddress = data.pickup_address
+     form.value.dropoffAddress = data.dropoff_address
+     form.value.paymentMethod = data.payment_method
+     form.value.note = data.note
+     // Add packageType, weight restoration
+     form.value.packageType = data.package_type || 'standard'
+     form.value.weight = data.weight || 1
+     form.value.type = data.service_type || 'standard'
+
+     currentStep.value = 3
+     activeQRId.value = data.id 
+     isShowQR.value = true
+     
+     // Khôi phục total_price từ database
+     if (data.total_price) {
+       // Tính lại distance dựa trên total_price
+       // total = 15000 + distance * 5000 + weight * 2000
+       // distance = (total - 15000 - weight * 2000) / 5000
+       const calculatedDistance = (data.total_price - 15000 - form.value.weight * 2000) / 5000
+       if (calculatedDistance > 0) {
+         distance.value = parseFloat(calculatedDistance.toFixed(1))
+       }
+     }
+     
+     // Khởi tạo map trước khi tính toán
+     await nextTick()
+     if (!map) initMap()
+     
+     if (form.value.pickupAddress) await fetchNominatim(form.value.pickupAddress, 'pickup')
+     if (form.value.dropoffAddress) await fetchNominatim(form.value.dropoffAddress, 'dropoff')
+     await restoreCoordsFromAddress(form.value.pickupAddress, 'pickup')
+     await restoreCoordsFromAddress(form.value.dropoffAddress, 'dropoff')
+     
+     // Vẽ lại map với markers nếu có coords
+     if (coords.value.pickup && coords.value.dropoff) {
+       const start = coords.value.pickup
+       const end = coords.value.dropoff
+       const startMarker = L.marker(start, { icon: pickupIcon })
+         .addTo(map!)
+         .bindPopup('🚚 Điểm lấy')
+         .openPopup()
+       const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('📦 Điểm giao')
+       markers.push(startMarker, endMarker)
+       const group = new L.FeatureGroup(markers)
+       map!.fitBounds(group.getBounds().pad(0.1))
+     }
+
+     // Simulate smooth loading for 0.3s
+     await new Promise(resolve => setTimeout(resolve, 300))
+
+  } catch (e) {
+    console.error(e)
+  } finally {
+    isLoadingPage.value = false
+  }
+}
+
+const restoreCoordsFromAddress = async (address: string, type: 'pickup' | 'dropoff') => {
+  if (!address) return
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+  try {
+     const res = await fetch(url)
+     const data = await res.json()
+     if (data && data.length > 0) {
+        const item = data[0]
+        const lat = parseFloat(item.lat)
+        const lon = parseFloat(item.lon)
+        if (type === 'pickup') coords.value.pickup = [lat, lon]
+        else coords.value.dropoff = [lat, lon]
+     }
+  } catch {}
+}
 
 watch(pickupQuery, (v) => {
   if (isSelecting.value) return
@@ -355,7 +483,8 @@ watch(currentStep, async (v) => {
   }
 })
 watch([() => coords.value.pickup, () => coords.value.dropoff], () => {
-  if (currentStep.value === 3) distance.value = 0
+  // Chỉ reset distance khi user thay đổi coords trong step 3, không phải khi resume order
+  if (currentStep.value === 3 && !isLoadingPage.value) distance.value = 0
 })
 
 const nextStep = () => {
@@ -409,6 +538,9 @@ const handleSubmit = async () => {
 
           activeQRId.value = data.id
           
+          // Lưu order ID vào sessionStorage để restore nếu reload
+          sessionStorage.setItem('activePaymentOrderId', data.id)
+          
           // Bắt đầu lắng nghe sự thay đổi của đơn hàng này
           listenForPaymentConfirmation(data.id)
           
@@ -422,7 +554,25 @@ const handleSubmit = async () => {
        }
        return
     } 
-    // Nếu đã hiện QR, nút này có thể disabled hoặc làm nút "Tôi đã thanh toán" (nhưng ta tự động check realtime)
+
+    // Nếu đã hiện QR, nút này sẽ đóng vai trò xác nhận "Đã thanh toán"
+    if (isShowQR.value && activeQRId.value) {
+        isSubmitting.value = true
+        try {
+            const { error } = await supabase.from('orders')
+                .update({ status: 'processing' })
+                .eq('id', activeQRId.value)
+            
+            if (error) throw error
+            
+            finishOrder()
+        } catch (e: any) {
+            alert('Lỗi cập nhật: ' + e.message)
+        } finally {
+            isSubmitting.value = false
+        }
+        return
+    }
     return
   }
 
@@ -484,7 +634,7 @@ const listenForPaymentConfirmation = (orderId: string) => {
 }
 
 const finishOrder = () => {
-  if (timerInterval) clearInterval(timerInterval)
+
   if (qrSubscription) supabase.removeChannel(qrSubscription)
   isShowQR.value = false
   currentStep.value = 4
@@ -525,6 +675,49 @@ const goOrderList = async () => {
   router.push('/dashboard/order-list')
 }
 
+const createNewOrder = async () => {
+  // Hủy payment confirmation listener nếu có
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+  
+  // Nếu có order waiting_payment, cancel nó
+  if (activeQRId.value) {
+    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
+    activeQRId.value = null
+    // Xóa sessionStorage
+    sessionStorage.removeItem('activePaymentOrderId')
+  }
+
+  // Reset dữ liệu và quay về step 1
+  isShowQR.value = false
+  currentStep.value = 1
+  distance.value = 0
+  
+  // Clear map và markers
+  if (map) {
+    map.remove()
+    map = null
+    markers = []
+  }
+
+  // Reset form nhưng giữ thông tin người gửi
+  form.value.receiverName = ''
+  form.value.receiverPhone = ''
+  form.value.weight = 1
+  form.value.type = 'standard'
+  form.value.note = ''
+  form.value.pickupAddress = ''
+  form.value.dropoffAddress = ''
+  form.value.paymentMethod = 'cod'
+  form.value.packageType = 'standard'
+
+  // Reset search
+  pickupQuery.value = ''
+  dropoffQuery.value = ''
+  pickupSuggestions.value = []
+  dropoffSuggestions.value = []
+  coords.value = { pickup: null, dropoff: null }
+}
+
 onBeforeRouteLeave((to, from, next) => {
   resetState()
   next()
@@ -535,7 +728,7 @@ onUnmounted(() => {
     map.remove()
     map = null
   }
-  if (timerInterval) clearInterval(timerInterval)
+
 })
 </script>
 
@@ -975,7 +1168,7 @@ onUnmounted(() => {
                 />
               </div>
 
-              <div
+               <div
                 class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
               >
                 <div class="flex justify-between border-b border-slate-200 pb-2">
@@ -1000,6 +1193,8 @@ onUnmounted(() => {
                 </div>
               </div>
 
+
+
               <div class="flex gap-3">
                 <button
                   @click="cancelQR"
@@ -1008,9 +1203,10 @@ onUnmounted(() => {
                   Hủy bỏ
                 </button>
                 <button
-                  class="flex items-center gap-2 px-6 py-2 bg-emerald-50 text-emerald-700 rounded-lg font-bold"
+                  @click="createNewOrder"
+                  class="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold transition shadow-lg"
                 >
-                  <Clock class="w-4 h-4 animate-spin" /> Đang chờ thanh toán...
+                  <Package class="w-4 h-4" /> Đặt đơn mới
                 </button>
               </div>
             </div>

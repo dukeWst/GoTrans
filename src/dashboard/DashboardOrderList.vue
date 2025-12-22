@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Package,
   Truck,
@@ -24,6 +25,8 @@ import {
   ArrowUpCircle, // Thêm icon cho thang máy
 } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
+
+const router = useRouter()
 
 // --- 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU ---
 interface Order {
@@ -214,7 +217,7 @@ const getOrders = async () => {
           packageType: item.package_type || 'standard',
           note: noteContent,
           paymentMethod: item.payment_method || 'cod',
-          movingDetails: movingDetails, // Gán data đã parse
+          movingDetails: movingDetails || undefined, // Gán data đã parse
         }
       })
     }
@@ -338,6 +341,11 @@ const filteredOrders = computed(() => {
 })
 
 const openDetails = (order: Order) => {
+  if (order.status === 'waiting_payment') {
+    const routeName = order.serviceType === 'delivery' ? 'service-delivery' : 'service-moving'
+    router.push({ name: routeName, query: { resumeOrder: order.id } })
+    return
+  }
   selectedOrder.value = order
 }
 const closeDetails = () => {
