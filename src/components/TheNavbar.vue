@@ -1,19 +1,19 @@
 <template>
-  <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
+  <header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100 dark:border-slate-800">
     <div class="container mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3 cursor-pointer" @click="$router.push('/')">
         <div class="w-16 h-10 rounded-xl text-white flex items-center justify-center">
           <img :src="logo" alt="Logo" class="w-16 h-8" />
         </div>
         <div>
-          <div class="font-extrabold text-lg text-slate-800 leading-none">GoTrans</div>
-          <div class="text-[10px] uppercase tracking-wider text-slate-500 font-medium mt-1">
+          <div class="font-extrabold text-lg text-slate-800 dark:text-white leading-none">GoTrans</div>
+          <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-300 font-medium mt-1">
             Vận chuyển thông minh
           </div>
         </div>
       </div>
 
-      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600 dark:text-slate-300">
         <RouterLink
           to="/"
           class="hover:text-emerald-600 transition-colors"
@@ -45,18 +45,18 @@
           >
             <div
               v-if="serviceOpen"
-              class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden p-2"
+              class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-100 dark:border-slate-700 overflow-hidden p-2"
             >
               <div
                 @click="handleServiceClick('/services/move')"
-                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer"
+                  class="block px-4 py-3 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900 hover:text-emerald-700 dark:hover:text-emerald-300 transition cursor-pointer"
               >
                 <div class="font-semibold">Chuyển nhà</div>
                 <div class="text-xs text-slate-400 font-normal">Trọn gói & Tháo lắp</div>
               </div>
               <div
                 @click="handleServiceClick('/services/delivery')"
-                class="block px-4 py-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer"
+                  class="block px-4 py-3 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900 hover:text-emerald-700 dark:hover:text-emerald-300 transition cursor-pointer"
               >
                 <div class="font-semibold">Giao hàng</div>
                 <div class="text-xs text-slate-400 font-normal">Nội thành siêu tốc</div>
@@ -85,7 +85,7 @@
         <template v-if="!session">
           <RouterLink
             to="/login"
-            class="px-5 py-2.5 rounded-xl text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 font-medium transition"
+            class="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900 font-medium transition"
           >
             Đăng nhập
           </RouterLink>
@@ -100,14 +100,14 @@
         <template v-else>
           <RouterLink
             to="/dashboard"
-            class="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition"
+            class="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-slate-800 rounded-full hover:bg-emerald-50 border border-transparent hover:border-emerald-200 dark:hover:border-emerald-600 transition"
           >
             <div
               class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold"
             >
               {{ userInitials }}
             </div>
-            <span class="text-sm font-semibold text-slate-700">Dashboard</span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-slate-100">Dashboard</span>
           </RouterLink>
         </template>
       </div>

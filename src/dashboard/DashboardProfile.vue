@@ -192,19 +192,19 @@ const goToSettings = (tabName: string) => {
 }
 </script>
 <template>
-  <main class="flex-1 md:ml-64 p-6 lg:p-10 relative">
+  <main class="flex-1 md:ml-64 p-6 lg:p-10 bg-slate-50 dark:bg-slate-900 relative transition-colors duration-300">
     <Transition name="toast">
       <div
         v-if="toast.show"
         class="fixed top-24 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md transition-all duration-300 transform"
         :class="
           toast.type === 'success'
-            ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-            : 'bg-red-50/90 border-red-200 text-red-800'
+            ? 'bg-emerald-50/90 dark:bg-emerald-900/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+            : 'bg-red-50/90 dark:bg-red-900/50 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
         "
       >
-        <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5 text-emerald-600" />
-        <XCircle v-else class="w-5 h-5 text-red-600" />
+        <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+        <XCircle v-else class="w-5 h-5 text-red-600 dark:text-red-400" />
         <div>
           <h4 class="font-bold text-sm">
             {{ toast.type === 'success' ? 'Thành công' : 'Thất bại' }}
@@ -216,26 +216,26 @@ const goToSettings = (tabName: string) => {
 
     <header class="flex justify-between items-center mb-8">
       <div>
-        <h2 class="text-2xl font-bold text-slate-900">Tài khoản của tôi</h2>
-        <p class="text-slate-500 mt-1">Quản lý thông tin cá nhân và bảo mật.</p>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Tài khoản của tôi</h2>
+        <p class="text-slate-500 dark:text-slate-400 mt-1">Quản lý thông tin cá nhân và bảo mật.</p>
       </div>
     </header>
 
     <div v-if="loading" class="flex justify-center py-20">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 dark:border-emerald-400"></div>
     </div>
 
     <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div class="space-y-6">
         <div
-          class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col items-center text-center relative overflow-hidden"
+          class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col items-center text-center relative overflow-hidden"
         >
           <div
-            class="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-emerald-500 to-teal-600"
+            class="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-emerald-600 dark:to-teal-700"
           ></div>
           <div class="relative mt-8 mb-4 group">
             <div
-              class="w-28 h-28 rounded-full border-4 border-white shadow-md overflow-hidden bg-gray-100"
+              class="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-md overflow-hidden bg-gray-100 dark:bg-slate-700"
             >
               <img
                 :src="profile.avatar_url || defaultAvatar + profile.full_name"
@@ -244,85 +244,85 @@ const goToSettings = (tabName: string) => {
               />
             </div>
             <button
-              class="absolute bottom-0 right-0 bg-slate-800 text-white p-2 rounded-full hover:bg-slate-700 transition shadow-lg border-2 border-white"
+              class="absolute bottom-0 right-0 bg-slate-800 dark:bg-slate-700 text-white p-2 rounded-full hover:bg-slate-700 dark:hover:bg-slate-600 transition shadow-lg border-2 border-white dark:border-slate-800"
               title="Đổi ảnh đại diện"
             >
               <Camera class="w-4 h-4" />
             </button>
           </div>
-          <h3 class="text-xl font-bold text-slate-900">
+          <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100">
             {{ profile.full_name || 'Chưa cập nhật tên' }}
           </h3>
-          <p class="text-slate-500 text-sm mb-4">{{ profile.email }}</p>
+          <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">{{ profile.email }}</p>
           <div class="flex gap-2 mb-6">
             <span
-              class="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-100 uppercase tracking-wider"
+              class="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-full border border-emerald-100 dark:border-emerald-800 uppercase tracking-wider"
               >{{ profile.role }}</span
             >
           </div>
-          <div class="w-full border-t border-gray-100 pt-4 text-left">
+          <div class="w-full border-t border-gray-100 dark:border-slate-700 pt-4 text-left">
             <div class="flex justify-between items-center py-2 text-sm">
-              <span class="text-slate-500">Tham gia từ</span>
-              <span class="font-medium text-slate-700">{{ profile.join_date }}</span>
+              <span class="text-slate-500 dark:text-slate-400">Tham gia từ</span>
+              <span class="font-medium text-slate-700 dark:text-slate-300">{{ profile.join_date }}</span>
             </div>
             <div class="flex justify-between items-center py-2 text-sm">
-              <span class="text-slate-500">Tổng đơn hàng</span>
-              <span class="font-medium text-emerald-600">{{ stats.total }}</span>
+              <span class="text-slate-500 dark:text-slate-400">Tổng đơn hàng</span>
+              <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ stats.total }}</span>
             </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
           <div
             @click="goToSettings('notifications')"
-            class="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition flex items-center gap-3"
+            class="p-4 border-b border-gray-50 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition flex items-center gap-3"
           >
-            <div class="bg-blue-50 p-2 rounded-lg text-blue-600"><Bell class="w-5 h-5" /></div>
-            <span class="font-medium text-slate-700">Cài đặt thông báo</span>
+            <div class="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400"><Bell class="w-5 h-5" /></div>
+            <span class="font-medium text-slate-700 dark:text-slate-300">Cài đặt thông báo</span>
           </div>
           <div
             @click="goToSettings('security')"
-            class="p-4 hover:bg-gray-50 cursor-pointer transition flex items-center gap-3"
+            class="p-4 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition flex items-center gap-3"
           >
-            <div class="bg-orange-50 p-2 rounded-lg text-orange-600"><Lock class="w-5 h-5" /></div>
-            <span class="font-medium text-slate-700">Bảo mật & Mật khẩu</span>
+            <div class="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-lg text-orange-600 dark:text-orange-400"><Lock class="w-5 h-5" /></div>
+            <span class="font-medium text-slate-700 dark:text-slate-300">Bảo mật & Mật khẩu</span>
           </div>
         </div>
       </div>
 
       <div class="lg:col-span-2 space-y-8">
-        <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 dark:border-slate-700">
           <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <User class="w-5 h-5 text-emerald-600" /> Thông tin cá nhân
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <User class="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Thông tin cá nhân
             </h3>
           </div>
 
           <form @submit.prevent="updateProfile" class="space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div class="space-y-2">
-                <label class="text-sm font-medium text-slate-700">Họ và tên</label>
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Họ và tên</label>
                 <div class="relative">
-                  <User class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <User class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500" />
                   <input
                     v-model="profile.full_name"
                     type="text"
                     :disabled="!isEditing"
-                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 disabled:bg-gray-100 disabled:text-slate-500 disabled:cursor-not-allowed bg-gray-50/50"
+                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500 dark:focus:ring-emerald-400 transition text-slate-800 dark:text-slate-100 disabled:bg-gray-100 dark:disabled:bg-slate-700 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed bg-gray-50/50 dark:bg-slate-700/50"
                     placeholder="Nhập họ tên của bạn"
                   />
                 </div>
               </div>
 
               <div class="space-y-2">
-                <label class="text-sm font-medium text-slate-700">Số điện thoại</label>
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Số điện thoại</label>
                 <div class="relative">
-                  <Phone class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Phone class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500" />
                   <input
                     v-model="profile.phone"
                     type="tel"
                     :disabled="!isEditing"
-                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-slate-800 disabled:bg-gray-100 disabled:text-slate-500 disabled:cursor-not-allowed bg-gray-50/50"
+                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500 dark:focus:ring-emerald-400 transition text-slate-800 dark:text-slate-100 disabled:bg-gray-100 dark:disabled:bg-slate-700 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed bg-gray-50/50 dark:bg-slate-700/50"
                     placeholder="Nhập số điện thoại"
                   />
                 </div>
@@ -330,14 +330,14 @@ const goToSettings = (tabName: string) => {
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-slate-700">Email (Không thể thay đổi)</label>
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Email (Không thể thay đổi)</label>
               <div class="relative">
-                <Mail class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Mail class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500" />
                 <input
                   v-model="profile.email"
                   type="email"
                   readonly
-                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-100 text-slate-500 cursor-not-allowed"
+                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed"
                 />
               </div>
             </div>
@@ -347,7 +347,7 @@ const goToSettings = (tabName: string) => {
                 v-if="!isEditing"
                 type="button"
                 @click="enableEdit"
-                class="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
+                class="flex items-center gap-2 bg-emerald-600 dark:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 dark:hover:bg-emerald-600 transition shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50"
               >
                 <Edit3 class="w-4 h-4" />
                 Chỉnh sửa hồ sơ
@@ -357,14 +357,14 @@ const goToSettings = (tabName: string) => {
                 <button
                   type="button"
                   @click="cancelEdit"
-                  class="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition"
+                  class="px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   :disabled="saving"
-                  class="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                  class="flex items-center gap-2 bg-emerald-600 dark:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 dark:hover:bg-emerald-600 transition shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <span
                     v-if="saving"

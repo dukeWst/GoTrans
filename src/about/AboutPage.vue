@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-gray-50 text-slate-800">
+  <div class="min-h-screen flex flex-col bg-gray-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
     <TheNavbar />
 
     <main class="flex-1">
@@ -35,8 +35,8 @@
           </div>
 
           <div class="space-y-6">
-            <h2 class="text-3xl font-bold text-slate-900">Sứ mệnh của chúng tôi</h2>
-            <p class="text-slate-600 leading-relaxed">
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-slate-100">Sứ mệnh của chúng tôi</h2>
+            <p class="text-slate-600 dark:text-slate-400 leading-relaxed">
               Thành lập từ năm 2018, GoTrans ra đời với một trăn trở duy nhất: "Tại sao việc chuyển
               nhà lại phải vất vả và thiếu minh bạch đến thế?".
             </p>
@@ -47,39 +47,39 @@
             </p>
 
             <div class="grid grid-cols-2 gap-6 pt-4">
-              <div class="p-4 bg-white rounded-xl shadow-sm border border-slate-100">
-                <p class="text-3xl font-bold text-emerald-600">5+</p>
-                <p class="text-sm text-slate-500 font-medium">Năm kinh nghiệm</p>
+              <div class="p-4 bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-100 dark:border-slate-600">
+                <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">5+</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Năm kinh nghiệm</p>
               </div>
-              <div class="p-4 bg-white rounded-xl shadow-sm border border-slate-100">
-                <p class="text-3xl font-bold text-emerald-600">98%</p>
-                <p class="text-sm text-slate-500 font-medium">Khách hàng hài lòng</p>
+              <div class="p-4 bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-100 dark:border-slate-600">
+                <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">98%</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Khách hàng hài lòng</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="py-20 bg-white">
+      <section class="py-20 bg-white dark:bg-slate-800">
         <div class="container mx-auto px-6">
           <div class="text-center max-w-2xl mx-auto mb-16">
-            <h2 class="text-3xl font-bold text-slate-900">Giá trị cốt lõi</h2>
-            <p class="text-slate-500 mt-2">Kim chỉ nam cho mọi hành động của người GoTrans</p>
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-slate-100">Giá trị cốt lõi</h2>
+            <p class="text-slate-500 dark:text-slate-400 mt-2">Kim chỉ nam cho mọi hành động của người GoTrans</p>
           </div>
 
           <div class="grid md:grid-cols-3 gap-8">
             <div
               v-for="val in values"
               :key="val.title"
-              class="text-center p-8 rounded-2xl bg-slate-50 hover:bg-emerald-50 transition duration-300 group"
+              class="text-center p-8 rounded-2xl bg-slate-50 dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-600 transition duration-300 group"
             >
               <div
-                class="w-16 h-16 mx-auto bg-white rounded-full shadow-md flex items-center justify-center text-emerald-600 mb-6 group-hover:scale-110 transition"
+                class="w-16 h-16 mx-auto bg-white dark:bg-slate-600 rounded-full shadow-md flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-6 group-hover:scale-110 transition"
               >
                 <component :is="val.icon" class="w-8 h-8" />
               </div>
-              <h3 class="text-xl font-bold text-slate-900 mb-3">{{ val.title }}</h3>
-              <p class="text-slate-600 text-sm leading-relaxed">{{ val.desc }}</p>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-3">{{ val.title }}</h3>
+              <p class="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">{{ val.desc }}</p>
             </div>
           </div>
         </div>

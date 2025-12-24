@@ -19,6 +19,7 @@ import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
 
 const router = useRouter()
+const route = useRoute()
 
 // --- 0. ICON MAP ---
 const pickupIcon = new L.Icon({
@@ -46,8 +47,10 @@ const currentStep = ref(1)
 const distance = ref(0)
 const isCalculating = ref(false)
 const isSubmitting = ref(false)
-// STATE THANH TOÁN ONLINE
 const isShowQR = ref(false)
+const isLoadingPage = ref(false)
+const activeQRId = ref<string | null>(null)
+let qrSubscription: any = null
 
 // Map Variables
 let map: L.Map | null = null
@@ -97,18 +100,29 @@ const errors = ref({
   weight: '',
 })
 
-// Hàm xóa lỗi khi focus
 const clearError = (field: keyof typeof errors.value) => {
   errors.value[field] = ''
 }
 
+// --- HÀM MỚI: Dọn dẹp dữ liệu session ---
+const clearSessionData = () => {
+  try {
+    sessionStorage.removeItem('lastDistance')
+    sessionStorage.removeItem('lastTotalPrice')
+    sessionStorage.removeItem('activePaymentOrderId_delivery')
+  } catch (e) {}
+}
+
 // --- LOGIC RESET DỮ LIỆU ---
 const resetState = () => {
+  // QUAN TRỌNG: Xóa sạch dữ liệu trong storage để tránh load lại đơn cũ
+  clearSessionData()
+  
   currentStep.value = 1
   distance.value = 0
   isCalculating.value = false
   isShowQR.value = false
-
+  activeQRId.value = null
 
   if (map) {
     map.remove()
@@ -117,6 +131,7 @@ const resetState = () => {
   }
 
   // Reset form
+  // (Giữ lại thông tin người gửi nếu muốn, ở đây ta reset sạch trừ người gửi sẽ load lại từ profile)
   form.value.receiverName = ''
   form.value.receiverPhone = ''
   form.value.weight = 1
@@ -125,6 +140,7 @@ const resetState = () => {
   form.value.pickupAddress = ''
   form.value.dropoffAddress = ''
   form.value.paymentMethod = 'cod'
+  form.value.packageType = 'standard'
 
   // Reset tìm kiếm
   pickupQuery.value = ''
@@ -136,6 +152,15 @@ const resetState = () => {
   notFoundPickup.value = false
   notFoundDropoff.value = false
   coords.value = { pickup: null, dropoff: null }
+}
+
+const restoreLastRoute = () => {
+  const saved = sessionStorage.getItem('lastDistance')
+  // Chỉ khôi phục nếu KHÔNG phải là resume order và KHÔNG có activeQR
+  if (saved && !activeQRId.value && !route.query.resumeOrder) {
+    const v = parseFloat(saved)
+    if (!isNaN(v) && v > 0) distance.value = v
+  }
 }
 
 // --- LOGIC VALIDATE ---
@@ -222,9 +247,7 @@ const profile = ref({ full_name: 'Đang tải...', phone: '' })
 
 const getProfile = async () => {
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const meta = user.user_metadata || {}
       profile.value = {
@@ -239,44 +262,53 @@ const getProfile = async () => {
   }
 }
 
-const route = useRoute()
-
 onMounted(() => {
   getProfile()
-  // Restore payment state nếu có
   restorePaymentState()
-  // Nếu không có payment state, check resume order
   if (!activeQRId.value) {
     checkResumeOrder()
   }
+  if (!activeQRId.value) restoreLastRoute()
 })
 
-onActivated(() => {
-  // Restore payment state if available (keeps user in payment view)
-  restorePaymentState()
+onActivated(async () => {
+  await restorePaymentState()
 
-  // Nếu có query param resumeOrder, luôn gọi checkResumeOrder để tải dữ liệu mới nhất
   if (route.query.resumeOrder) {
     checkResumeOrder()
     return
   }
 
-  // Nếu không có active payment đang chạy, reset và load profile
   if (!activeQRId.value) {
-    resetState()
+    resetState() // Reset để đảm bảo form sạch
     getProfile()
     checkResumeOrder()
+    restoreLastRoute()
   }
 })
 
-const restorePaymentState = () => {
-  const savedOrderId = sessionStorage.getItem('activePaymentOrderId')
-  if (savedOrderId) {
-    activeQRId.value = savedOrderId
-    isShowQR.value = true
-    currentStep.value = 3
-    // Restart payment confirmation listener
-    listenForPaymentConfirmation(savedOrderId)
+const restorePaymentState = async () => {
+  const savedOrderId = sessionStorage.getItem('activePaymentOrderId_delivery')
+  if (!savedOrderId) return
+
+  try {
+    const { data, error } = await supabase.from('orders').select('id,status').eq('id', savedOrderId).single()
+    if (error || !data) {
+      sessionStorage.removeItem('activePaymentOrderId_delivery')
+      return
+    }
+
+    if (data.status === 'waiting_payment') {
+      activeQRId.value = savedOrderId
+      isShowQR.value = true
+      currentStep.value = 3
+      listenForPaymentConfirmation(savedOrderId)
+    } else {
+      sessionStorage.removeItem('activePaymentOrderId_delivery')
+    }
+  } catch (e) {
+    console.error('Error restoring payment state', e)
+    sessionStorage.removeItem('activePaymentOrderId_delivery')
   }
 }
 
@@ -298,7 +330,6 @@ const checkResumeOrder = async () => {
      form.value.dropoffAddress = data.dropoff_address
      form.value.paymentMethod = data.payment_method
      form.value.note = data.note
-     // Add packageType, weight restoration
      form.value.packageType = data.package_type || 'standard'
      form.value.weight = data.weight || 1
      form.value.type = data.service_type || 'standard'
@@ -307,18 +338,13 @@ const checkResumeOrder = async () => {
      activeQRId.value = data.id 
      isShowQR.value = true
      
-     // Khôi phục total_price từ database
      if (data.total_price) {
-       // Tính lại distance dựa trên total_price
-       // total = 15000 + distance * 5000 + weight * 2000
-       // distance = (total - 15000 - weight * 2000) / 5000
        const calculatedDistance = (data.total_price - 15000 - form.value.weight * 2000) / 5000
        if (calculatedDistance > 0) {
          distance.value = parseFloat(calculatedDistance.toFixed(1))
        }
      }
      
-     // Khởi tạo map trước khi tính toán
      await nextTick()
      if (!map) initMap()
      
@@ -327,21 +353,16 @@ const checkResumeOrder = async () => {
      await restoreCoordsFromAddress(form.value.pickupAddress, 'pickup')
      await restoreCoordsFromAddress(form.value.dropoffAddress, 'dropoff')
      
-     // Vẽ lại map với markers nếu có coords
      if (coords.value.pickup && coords.value.dropoff) {
        const start = coords.value.pickup
        const end = coords.value.dropoff
-       const startMarker = L.marker(start, { icon: pickupIcon })
-         .addTo(map!)
-         .bindPopup('🚚 Điểm lấy')
-         .openPopup()
+       const startMarker = L.marker(start, { icon: pickupIcon }).addTo(map!).bindPopup('🚚 Điểm lấy').openPopup()
        const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('📦 Điểm giao')
        markers.push(startMarker, endMarker)
        const group = new L.FeatureGroup(markers)
        map!.fitBounds(group.getBounds().pad(0.1))
      }
 
-     // Simulate smooth loading for 0.3s
      await new Promise(resolve => setTimeout(resolve, 300))
 
   } catch (e) {
@@ -424,10 +445,7 @@ const calculateRoute = async () => {
   const start = coords.value.pickup
   const end = coords.value.dropoff
 
-  const startMarker = L.marker(start, { icon: pickupIcon })
-    .addTo(map!)
-    .bindPopup('🚚 Điểm lấy')
-    .openPopup()
+  const startMarker = L.marker(start, { icon: pickupIcon }).addTo(map!).bindPopup('🚚 Điểm lấy').openPopup()
   const endMarker = L.marker(end, { icon: dropoffIcon }).addTo(map!).bindPopup('📦 Điểm giao')
   markers.push(startMarker, endMarker)
 
@@ -444,12 +462,20 @@ const calculateRoute = async () => {
     const data = await res.json()
     if (data.code === 'Ok' && data.routes.length) {
       distance.value = parseFloat((data.routes[0].distance / 1000).toFixed(1))
+      try {
+        sessionStorage.setItem('lastDistance', String(distance.value))
+        sessionStorage.setItem('lastTotalPrice', String(totalPrice.value))
+      } catch (e) {}
     } else {
       throw new Error('No route')
     }
   } catch (e) {
     const straightDistance = calculateDistance(start[0], start[1], end[0], end[1])
     distance.value = parseFloat((straightDistance * 1.3).toFixed(1))
+    try {
+      sessionStorage.setItem('lastDistance', String(distance.value))
+      sessionStorage.setItem('lastTotalPrice', String(totalPrice.value))
+    } catch (e) {}
   } finally {
     isCalculating.value = false
   }
@@ -459,12 +485,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   const R = 6371
   const dLat = (lat2 - lat1) * (Math.PI / 180)
   const dLon = (lon2 - lon1) * (Math.PI / 180)
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-      Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2)
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return parseFloat((R * c).toFixed(1))
 }
@@ -483,12 +504,10 @@ watch(currentStep, async (v) => {
   }
 })
 watch([() => coords.value.pickup, () => coords.value.dropoff], () => {
-  // Chỉ reset distance khi user thay đổi coords trong step 3, không phải khi resume order
   if (currentStep.value === 3 && !isLoadingPage.value) distance.value = 0
 })
 
 const nextStep = () => {
-  // Validate trước khi chuyển bước
   if (!validateStep(currentStep.value)) return
   if (currentStep.value < 3) currentStep.value++
 }
@@ -497,15 +516,11 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--
 }
 
-const activeQRId = ref<string | null>(null)
-let qrSubscription: any = null
-
 const handleSubmit = async () => {
   if (isSubmitting.value) return
 
-  // LOGIC THANH TOÁN ONLINE (QR)
+  // ONLINE PAYMENT
   if (form.value.paymentMethod === 'online') {
-    // Nếu chưa hiển thị QR -> Tạo đơn nháp (waiting_payment) và hiện QR
     if (!isShowQR.value) {
        isSubmitting.value = true
        try {
@@ -514,7 +529,6 @@ const handleSubmit = async () => {
 
           const orderCode = `DH-${Math.floor(100000 + Math.random() * 900000)}`
           
-          // Tạo đơn hàng với trạng thái 'waiting_payment'
           const { data, error } = await supabase.from('orders').insert({
             user_id: user.id,
             order_code: orderCode,
@@ -523,7 +537,7 @@ const handleSubmit = async () => {
             dropoff_address: form.value.dropoffAddress,
             total_price: totalPrice.value,
             package_type: form.value.packageType,
-            status: 'waiting_payment', // Trạng thái chờ thanh toán
+            status: 'waiting_payment',
             sender_name: form.value.senderName,
             sender_phone: form.value.senderPhone,
             receiver_name: form.value.receiverName,
@@ -534,20 +548,11 @@ const handleSubmit = async () => {
           }).select().single()
 
           if (error) throw error
-          if (!data) throw new Error('Không tạo được đơn hàng')
-
           activeQRId.value = data.id
-          
-          // Lưu order ID vào sessionStorage để restore nếu reload
-          sessionStorage.setItem('activePaymentOrderId', data.id)
-          
-          // Bắt đầu lắng nghe sự thay đổi của đơn hàng này
+          sessionStorage.setItem('activePaymentOrderId_delivery', data.id)
           listenForPaymentConfirmation(data.id)
-          
-          // Hiển thị QR
           isShowQR.value = true
        } catch (e: any) {
-          console.error(e)
           alert('Lỗi tạo đơn: ' + e.message)
        } finally {
           isSubmitting.value = false
@@ -555,16 +560,11 @@ const handleSubmit = async () => {
        return
     } 
 
-    // Nếu đã hiện QR, nút này sẽ đóng vai trò xác nhận "Đã thanh toán"
     if (isShowQR.value && activeQRId.value) {
         isSubmitting.value = true
         try {
-            const { error } = await supabase.from('orders')
-                .update({ status: 'processing' })
-                .eq('id', activeQRId.value)
-            
+            const { error } = await supabase.from('orders').update({ status: 'processing' }).eq('id', activeQRId.value)
             if (error) throw error
-            
             finishOrder()
         } catch (e: any) {
             alert('Lỗi cập nhật: ' + e.message)
@@ -576,7 +576,7 @@ const handleSubmit = async () => {
     return
   }
 
-  // LOGIC THANH TOÁN COD (Tiền mặt) -> Tạo đơn luôn với status processing
+  // COD PAYMENT
   isSubmitting.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -592,7 +592,7 @@ const handleSubmit = async () => {
       dropoff_address: form.value.dropoffAddress,
       total_price: totalPrice.value,
       package_type: form.value.packageType,
-      status: 'processing', // COD vào thẳng processing
+      status: 'processing',
       sender_name: form.value.senderName,
       sender_phone: form.value.senderPhone,
       receiver_name: form.value.receiverName,
@@ -603,11 +603,13 @@ const handleSubmit = async () => {
     })
 
     if (error) throw error
-
-    // Thành công
+    
+    // THÀNH CÔNG: Dọn dẹp session sạch sẽ
+    isShowQR.value = false
+    activeQRId.value = null
+    clearSessionData()
     currentStep.value = 4
   } catch (error: any) {
-    console.error('Lỗi lưu đơn hàng:', error)
     alert('Có lỗi xảy ra: ' + error.message)
   } finally {
      if (currentStep.value !== 4) isSubmitting.value = false
@@ -616,40 +618,31 @@ const handleSubmit = async () => {
 
 const listenForPaymentConfirmation = (orderId: string) => {
   if (qrSubscription) supabase.removeChannel(qrSubscription)
-  
-  qrSubscription = supabase
-    .channel(`payment-${orderId}`)
-    .on('postgres_changes', { 
-       event: 'UPDATE', 
-       schema: 'public', 
-       table: 'orders',
-       filter: `id=eq.${orderId}`
+  qrSubscription = supabase.channel(`payment-${orderId}`).on('postgres_changes', { 
+       event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}`
     }, (payload: any) => {
        if (payload.new && payload.new.status === 'processing') {
-          // Admin đã xác nhận!
           finishOrder()
        }
-    })
-    .subscribe()
+    }).subscribe()
 }
 
 const finishOrder = () => {
-
   if (qrSubscription) supabase.removeChannel(qrSubscription)
   isShowQR.value = false
   currentStep.value = 4
   activeQRId.value = null
+  // THÀNH CÔNG: Xóa session data
+  clearSessionData()
 }
 
 const cancelQR = async () => {
   if (qrSubscription) supabase.removeChannel(qrSubscription)
-  
-  // Nếu đã tạo đơn waiting_payment, nên hủy nó đi
   if (activeQRId.value) {
-     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
-     activeQRId.value = null
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
+      activeQRId.value = null
   }
-
+  clearSessionData() // Hủy thì cũng nên xóa session
   isShowQR.value = false
   nextTick(() => {
     map?.remove()
@@ -659,63 +652,25 @@ const cancelQR = async () => {
   })
 }
 
-const isLoadingPage = ref(false)
-
 const goOrderList = async () => {
-  // 1. Bật loading che toàn màn hình
   isLoadingPage.value = true
-
-  // 2. Đợi một chút để UI kịp cập nhật (tạo cảm giác mượt mà)
+  resetState() // Reset sạch sẽ trước khi chuyển trang
   await new Promise((resolve) => setTimeout(resolve, 300))
-
-  // 3. Reset dữ liệu form
-  resetState()
-
-  // 4. Chuyển trang
-  router.push('/dashboard/order-list')
+  await router.push('/dashboard/order-list')
 }
 
 const createNewOrder = async () => {
-  // Hủy payment confirmation listener nếu có
   if (qrSubscription) supabase.removeChannel(qrSubscription)
-  
-  // Nếu có order waiting_payment, cancel nó
   if (activeQRId.value) {
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
     activeQRId.value = null
-    // Xóa sessionStorage
-    sessionStorage.removeItem('activePaymentOrderId')
   }
-
-  // Reset dữ liệu và quay về step 1
+  
+  resetState() // Gọi resetState để xóa hết session và form
+  
   isShowQR.value = false
   currentStep.value = 1
   distance.value = 0
-  
-  // Clear map và markers
-  if (map) {
-    map.remove()
-    map = null
-    markers = []
-  }
-
-  // Reset form nhưng giữ thông tin người gửi
-  form.value.receiverName = ''
-  form.value.receiverPhone = ''
-  form.value.weight = 1
-  form.value.type = 'standard'
-  form.value.note = ''
-  form.value.pickupAddress = ''
-  form.value.dropoffAddress = ''
-  form.value.paymentMethod = 'cod'
-  form.value.packageType = 'standard'
-
-  // Reset search
-  pickupQuery.value = ''
-  dropoffQuery.value = ''
-  pickupSuggestions.value = []
-  dropoffSuggestions.value = []
-  coords.value = { pickup: null, dropoff: null }
 }
 
 onBeforeRouteLeave((to, from, next) => {
@@ -724,16 +679,12 @@ onBeforeRouteLeave((to, from, next) => {
 })
 
 onUnmounted(() => {
-  if (map) {
-    map.remove()
-    map = null
-  }
-
+  if (map) { map.remove(); map = null }
 })
 </script>
 
 <template>
-  <main class="flex-1 md:ml-64 p-6 lg:p-10 bg-gray-50 min-h-screen flex flex-col">
+  <main class="flex-1 md:ml-64 p-6 lg:p-10 bg-gray-50 dark:bg-slate-900 min-h-screen flex flex-col transition-colors duration-300">
     <header class="mb-8">
       <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
         <Package class="w-6 h-6 text-emerald-600" /> Tạo đơn Giao hàng
@@ -743,9 +694,9 @@ onUnmounted(() => {
 
     <div class="mb-8 mx-auto w-full max-w-3xl">
       <div class="flex items-center justify-between relative">
-        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10"></div>
+        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 dark:bg-slate-700 -z-10"></div>
         <div
-          class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 transition-all duration-300 -z-10"
+          class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 dark:bg-emerald-400 transition-all duration-300 -z-10"
           :style="{ width: ((currentStep - 1) / 3) * 100 + '%' }"
         ></div>
         <div
@@ -754,21 +705,21 @@ onUnmounted(() => {
           :class="[
             'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors border-4',
             currentStep >= step
-              ? 'bg-emerald-600 border-emerald-100 text-white'
-              : 'bg-white border-gray-200 text-gray-400',
+              ? 'bg-emerald-600 dark:bg-emerald-500 border-emerald-100 dark:border-emerald-700 text-white'
+              : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-400 dark:text-slate-500',
           ]"
         >
           {{ step }}
         </div>
       </div>
-      <div class="flex justify-between mt-2 text-xs font-medium text-slate-500">
+      <div class="flex justify-between mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
         <span>Liên lạc</span><span>Gói hàng</span><span>Lộ trình</span><span>Hoàn tất</span>
       </div>
     </div>
 
     <div class="flex-1 flex flex-col max-w-3xl mx-auto w-full">
       <div
-        class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:p-8 flex-1 flex flex-col"
+        class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 lg:p-8 flex-1 flex flex-col"
       >
         <div v-if="currentStep === 1" class="space-y-8 animate-fade-in">
           <div class="flex items-center justify-between border-b border-gray-100 pb-4">
@@ -797,15 +748,15 @@ onUnmounted(() => {
                       'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
                       errors.senderName
                         ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-emerald-500',
+                        : 'border-gray-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-400',
                     ]"
                   />
-                  <p v-if="errors.senderName" class="text-red-500 text-xs ml-1">
+                  <p v-if="errors.senderName" class="text-red-500 dark:text-red-400 text-xs ml-1">
                     {{ errors.senderName }}
                   </p>
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                  <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1"
                     >SĐT <span class="text-red-500">*</span></label
                   >
                   <input
@@ -814,13 +765,13 @@ onUnmounted(() => {
                     type="tel"
                     maxlength="10"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 dark:bg-slate-700 border rounded-xl focus:outline-none transition-all text-slate-800 dark:text-slate-100',
                       errors.senderPhone
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-emerald-500',
+                        ? 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-gray-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-400',
                     ]"
                   />
-                  <p v-if="errors.senderPhone" class="text-red-500 text-xs ml-1">
+                  <p v-if="errors.senderPhone" class="text-red-500 dark:text-red-400 text-xs ml-1">
                     {{ errors.senderPhone }}
                   </p>
                 </div>
@@ -828,24 +779,24 @@ onUnmounted(() => {
             </div>
             <div class="space-y-5">
               <div
-                class="flex items-center gap-2 text-orange-500 font-bold text-sm uppercase tracking-wider"
+                class="flex items-center gap-2 text-orange-500 dark:text-orange-400 font-bold text-sm uppercase tracking-wider"
               >
-                <div class="w-2 h-2 rounded-full bg-orange-500"></div>
+                <div class="w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400"></div>
                 Người nhận
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                  <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1"
                     >Họ tên <span class="text-red-500">*</span></label
                   >
                   <input
                     v-model="form.receiverName"
                     @focus="clearError('receiverName')"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 dark:bg-slate-700 border rounded-xl focus:outline-none transition-all text-slate-800 dark:text-slate-100',
                       errors.receiverName
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-orange-500',
+                        ? 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-gray-200 dark:border-slate-700 focus:border-orange-500 dark:focus:border-orange-400',
                     ]"
                   />
                   <p v-if="errors.receiverName" class="text-red-500 text-xs ml-1">
@@ -978,7 +929,7 @@ onUnmounted(() => {
                     v-model="pickupQuery"
                     type="text"
                     placeholder="Nhập địa chỉ..."
-                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-emerald-500 outline-none shadow-sm"
+                    class="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl focus:border-emerald-500 dark:focus:border-emerald-400 outline-none shadow-sm text-slate-800 dark:text-slate-100"
                   />
                   <div
                     v-if="isSearchingPickup"
@@ -987,13 +938,13 @@ onUnmounted(() => {
                 </div>
                 <div
                   v-if="pickupSuggestions.length > 0"
-                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                  class="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
                 >
                   <div
                     v-for="(item, index) in pickupSuggestions"
                     :key="index"
                     @click="selectAddress(item, 'pickup')"
-                    class="p-3 hover:bg-emerald-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                    class="p-3 hover:bg-emerald-50 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-700 dark:text-slate-300 border-b border-gray-50 dark:border-slate-700 flex flex-col"
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
@@ -1012,7 +963,7 @@ onUnmounted(() => {
                     v-model="dropoffQuery"
                     type="text"
                     placeholder="Nhập địa chỉ..."
-                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-orange-500 outline-none shadow-sm"
+                    class="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl focus:border-orange-500 dark:focus:border-orange-400 outline-none shadow-sm text-slate-800 dark:text-slate-100"
                   />
                   <div
                     v-if="isSearchingDropoff"
@@ -1021,13 +972,13 @@ onUnmounted(() => {
                 </div>
                 <div
                   v-if="dropoffSuggestions.length > 0"
-                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                  class="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
                 >
                   <div
                     v-for="(item, index) in dropoffSuggestions"
                     :key="index"
                     @click="selectAddress(item, 'dropoff')"
-                    class="p-3 hover:bg-orange-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                    class="p-3 hover:bg-orange-50 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-700 dark:text-slate-300 border-b border-gray-50 dark:border-slate-700 flex flex-col"
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
@@ -1039,16 +990,16 @@ onUnmounted(() => {
             </div>
 
             <div
-              class="relative rounded-2xl overflow-hidden border border-gray-200 h-64 md:h-80 bg-slate-100 shadow-inner z-0"
+              class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-700 h-64 md:h-80 bg-slate-100 dark:bg-slate-700 shadow-inner z-0"
             >
               <div id="mapContainer" class="w-full h-full z-0"></div>
               <div
                 v-if="!distance"
-                class="absolute inset-0 bg-white/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
+                class="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
               >
                 <button
                   @click="calculateRoute"
-                  class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-full font-bold hover:scale-105 shadow-xl transition-all"
+                  class="flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-8 py-3 rounded-full font-bold hover:scale-105 dark:hover:bg-slate-600 shadow-xl transition-all"
                 >
                   <Calculator v-if="!isCalculating" class="w-4 h-4" />
                   {{ isCalculating ? 'Đang tìm đường...' : 'Xem lộ trình & Giá tiền' }}
@@ -1058,23 +1009,23 @@ onUnmounted(() => {
 
             <div v-if="distance > 0" class="space-y-6">
               <div
-                class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-100 animate-fade-in"
+                class="bg-gradient-to-br from-emerald-50 dark:from-emerald-900/30 to-teal-50 dark:to-teal-900/30 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-800 animate-fade-in"
               >
                 <div
-                  class="flex justify-between items-end mb-4 border-b border-emerald-200/50 pb-4"
+                  class="flex justify-between items-end mb-4 border-b border-emerald-200/50 dark:border-emerald-700/50 pb-4"
                 >
                   <div>
-                    <p class="text-sm text-emerald-700">Khoảng cách thực</p>
-                    <p class="text-2xl font-bold text-emerald-900">{{ distance }} km</p>
+                    <p class="text-sm text-emerald-700 dark:text-emerald-300">Khoảng cách thực</p>
+                    <p class="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{{ distance }} km</p>
                   </div>
                   <div class="text-right">
-                    <p class="text-sm text-emerald-700">Tổng chi phí</p>
-                    <p class="text-3xl font-extrabold text-emerald-600">
+                    <p class="text-sm text-emerald-700 dark:text-emerald-300">Tổng chi phí</p>
+                    <p class="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
                       {{ totalPrice.toLocaleString('vi-VN') }}đ
                     </p>
                   </div>
                 </div>
-                <div class="space-y-1.5 text-xs text-emerald-800">
+                <div class="space-y-1.5 text-xs text-emerald-800 dark:text-emerald-200">
                   <div class="flex justify-between">
                     <span>Phí mở cửa:</span><span class="font-medium">15.000đ</span>
                   </div>
@@ -1152,15 +1103,17 @@ onUnmounted(() => {
 
           <template v-else>
             <div class="flex flex-col items-center justify-center text-center animate-fade-in py-6">
-              <h3 class="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
-                <QrCode class="w-6 h-6 text-emerald-600" /> Quét mã để thanh toán
+              <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                <QrCode class="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Quét mã để thanh toán
               </h3>
-              <p class="text-slate-500 mb-6 max-w-sm">
+              <p class="text-slate-500 dark:text-slate-400 mb-6 max-w-sm">
                 Vui lòng sử dụng ứng dụng ngân hàng để quét mã bên dưới. Đơn hàng sẽ tự động hoàn
                 tất sau khi thanh toán.
               </p>
 
-              <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-lg mb-6 relative">
+              <div
+                class="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-lg mb-6 relative"
+              >
                 <img
                   :src="`https://img.vietqr.io/image/MB-0333053420-compact.jpg?amount=${totalPrice}&addInfo=GOTRANS ${profile.phone}`"
                   alt="QR Code"
@@ -1169,31 +1122,29 @@ onUnmounted(() => {
               </div>
 
                <div
-                class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
+                class="bg-slate-50 dark:bg-slate-700 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100 dark:border-slate-600"
               >
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Ngân hàng</span
-                  ><span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Ngân hàng</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100">MB Bank (Quân Đội)</span>
                 </div>
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tài khoản</span
-                  ><span class="font-bold text-slate-800">0333053420</span>
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Số tài khoản</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100">0333053420</span>
                 </div>
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tiền</span
-                  ><span class="font-bold text-emerald-600 text-lg"
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Số tiền</span
+                  ><span class="font-bold text-emerald-600 dark:text-emerald-400 text-lg"
                     >{{ totalPrice.toLocaleString() }}đ</span
                   >
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-slate-500 text-sm">Nội dung</span
-                  ><span class="font-bold text-slate-800"
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Nội dung</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100"
                     >GOTRANS THANH TOAN {{ profile.phone }}</span
                   >
                 </div>
               </div>
-
-
 
               <div class="flex gap-3">
                 <button
@@ -1292,23 +1243,6 @@ onUnmounted(() => {
       </div>
     </div>
   </main>
-  <Transition name="fade">
-    <div
-      v-if="isLoadingPage"
-      class="fixed inset-0 z-[9999] bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center"
-    >
-      <div class="relative">
-        <div
-          class="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"
-        ></div>
-        <div class="absolute inset-0 flex items-center justify-center">
-          <Package class="w-6 h-6 text-emerald-600" />
-        </div>
-      </div>
-
-      <p class="mt-4 text-slate-600 font-medium animate-pulse">Đang tải dữ liệu...</p>
-    </div>
-  </Transition>
 </template>
 
 <style scoped>

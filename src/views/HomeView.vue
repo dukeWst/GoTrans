@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-gray-50 text-slate-800">
+  <div class="min-h-screen flex flex-col bg-gray-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
     <TheNavbar />
 
     <main class="flex-1 container mx-auto px-6 py-12 space-y-20">

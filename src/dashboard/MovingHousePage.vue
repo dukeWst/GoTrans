@@ -9,7 +9,7 @@ import {
   onDeactivated,
   onActivated,
 } from 'vue'
-import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { useRouter, onBeforeRouteLeave, useRoute } from 'vue-router'
 import {
   Truck,
   MapPin,
@@ -29,9 +29,9 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '@/supabase'
-import { useRoute } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 
 // --- 0. CONFIG ICON MAP ---
 const pickupIcon = new L.Icon({
@@ -65,6 +65,9 @@ const isLoadingPage = ref(false)
 const isShowQR = ref(false)
 const activeQRId = ref<string | null>(null)
 let qrSubscription: any = null
+
+// Optional override total when restoring from DB
+const overrideTotal = ref<number | null>(null)
 
 // Map Variables
 let map: L.Map | null = null
@@ -145,12 +148,23 @@ const resetState = () => {
   isCalculating.value = false
   isSubmitting.value = false
   isShowQR.value = false
+  activeQRId.value = null
+  overrideTotal.value = null // <--- Reset override giá tiền
+
+  // Xóa sạch Session Storage
+  try {
+    sessionStorage.removeItem('activePaymentOrderId_moving')
+    sessionStorage.removeItem('lastDistanceMoving')
+    sessionStorage.removeItem('lastTotalPriceMoving')
+  } catch (e) {}
 
   // Reset Map
   if (map) {
     map.remove()
     map = null
   }
+  markers = []
+
   pickupQuery.value = ''
   dropoffQuery.value = ''
   pickupSuggestions.value = []
@@ -159,7 +173,7 @@ const resetState = () => {
   isSearchingDropoff.value = false
   coords.value = { pickup: null, dropoff: null }
 
-  // Reset Form Data (Xóa sạch)
+  // Reset Form Data
   form.value = {
     senderName: '',
     senderPhone: '',
@@ -194,14 +208,12 @@ const getProfile = async () => {
       error,
     } = await supabase.auth.getUser()
 
-    // Nếu lỗi token -> đá về login
     if (error || !user) {
       await supabase.auth.signOut()
       router.push('/login')
       return
     }
 
-    // Nếu ok -> Điền tên/sđt người gửi
     if (user) {
       const meta = user.user_metadata || {}
       form.value.senderName = meta.full_name || 'Khách hàng'
@@ -213,33 +225,40 @@ const getProfile = async () => {
   }
 }
 
-// Hook chạy khi mới vào trang lần đầu
 onMounted(() => {
   getProfile()
+  restorePaymentState()
+  if (!activeQRId.value) {
+    checkResumeOrder()
+  }
 })
 
-// Hook chạy khi rời khỏi trang (Route change)
 onBeforeRouteLeave((to, from, next) => {
   resetState()
   next()
 })
 
-// Hook chạy khi Component bị ẩn (Chuyển Tab Dashboard)
 onDeactivated(() => {
+  // Khi ẩn component (chuyển tab), chỉ reset nếu không có giao dịch dang dở
+  // Nhưng để an toàn cho case tạo mới, bạn có thể cân nhắc logic ở đây.
+  // Hiện tại giữ nguyên logic cũ:
   resetState()
 })
 
-// Hook chạy khi quay lại Component (Active lại Tab)
-onActivated(() => {
-  // Reset trước để đảm bảo sạch sẽ
-  resetState()
-  // Sau đó lấy lại thông tin user để điền cho tiện
-  getProfile()
-  // Check resume order
-  checkResumeOrder()
-})
+onActivated(async () => {
+  await restorePaymentState()
 
-const route = useRoute()
+  if (route.query.resumeOrder) {
+    checkResumeOrder()
+    return
+  }
+
+  if (!activeQRId.value) {
+    resetState()
+    getProfile()
+    checkResumeOrder()
+  }
+})
 
 const checkResumeOrder = async () => {
   const resumeId = route.query.resumeOrder
@@ -251,7 +270,6 @@ const checkResumeOrder = async () => {
      if (error || !data) return
      if (data.status !== 'waiting_payment') return
 
-     // Populate Form
      form.value.senderName = data.sender_name
      form.value.senderPhone = data.sender_phone
      form.value.receiverName = data.receiver_name
@@ -261,31 +279,12 @@ const checkResumeOrder = async () => {
      form.value.paymentMethod = data.payment_method
      form.value.note = data.note
      
-     // Parse note for items/house details if simpler text format isn't used
-     // Assuming simple restoration for now or parsing if needed. 
-     // Since Note is a string: "..." we might need to be careful if we rely on it for UI "Items selected".
-     // For now, let's trust the text fields are most important for the QR.
-     
-     // Force Step 3
      currentStep.value = 3
      activeQRId.value = data.id 
      isShowQR.value = true
      
-     // Trigger Map Init if needed (though QR hides map)
-     
-     // Recalculate distance/price from DB or re-run logic? 
-     // Better to use price from DB for consistency
-     // We can override totalPrice computed if we want, OR just let user re-verify. 
-     // But to show correct QR amount, we need the price.
-     // Let's rely on standard logic -> We need coords to calculate distance to calculate price.
-     // So we simply set addresses and trigger fetch?
-     // Better: just fetch coords from nominatim again or store them? DB doesn't have coords.
-     // We will try to fetch coords from addresses to restore distance.
      if (form.value.pickupAddress) await fetchNominatim(form.value.pickupAddress, 'pickup')
      if (form.value.dropoffAddress) await fetchNominatim(form.value.dropoffAddress, 'dropoff')
-     // select first result logic? Or just use address string.
-     // Actually, without coords, we can't show map path. 
-     // Let's try to geocode the addresses.
      
      await restoreCoordsFromAddress(form.value.pickupAddress, 'pickup')
      await restoreCoordsFromAddress(form.value.dropoffAddress, 'dropoff')
@@ -293,10 +292,7 @@ const checkResumeOrder = async () => {
      if (coords.value.pickup && coords.value.dropoff) {
        await calculateRoute()
      }
-
-     // Simulate smooth loading for 0.3s
      await new Promise(resolve => setTimeout(resolve, 300))
-
   } catch (e) {
     console.error(e)
   } finally {
@@ -320,7 +316,6 @@ const restoreCoordsFromAddress = async (address: string, type: 'pickup' | 'dropo
   } catch {}
 }
 
-// Dọn dẹp khi hủy component
 onUnmounted(() => {
   if (map) {
     map.remove()
@@ -349,8 +344,6 @@ const validateStep = (step: number) => {
       errors.value.senderPhone = 'SĐT phải có 10 số'
       isValid = false
     }
-
-    // Người nhận (Bắt buộc nhập, không auto-fill)
     if (!form.value.receiverName.trim()) {
       errors.value.receiverName = 'Vui lòng nhập tên người nhận'
       isValid = false
@@ -371,7 +364,6 @@ const validateStep = (step: number) => {
       isValid = false
     }
   }
-
   return isValid
 }
 
@@ -468,6 +460,10 @@ const calculateRoute = async () => {
     const data = await res.json()
     if (data.code === 'Ok' && data.routes.length) {
       distance.value = parseFloat((data.routes[0].distance / 1000).toFixed(1))
+      try {
+        sessionStorage.setItem('lastDistanceMoving', String(distance.value))
+        sessionStorage.setItem('lastTotalPriceMoving', String(totalPrice.value))
+      } catch (e) {}
     } else {
       throw new Error('No route')
     }
@@ -488,6 +484,85 @@ const calculateRoute = async () => {
   }
 }
 
+// --- PAYMENT: realtime listener + restore logic ---
+const listenForPaymentConfirmation = (orderId: string) => {
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+
+  qrSubscription = supabase
+    .channel(`moving-payment-${orderId}`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'orders',
+      filter: `id=eq.${orderId}`,
+    }, (payload: any) => {
+      if (payload.new && payload.new.status === 'processing') {
+        finishOrder()
+      }
+    })
+    .subscribe()
+}
+
+const finishOrder = () => {
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+  isShowQR.value = false
+  currentStep.value = 4
+  activeQRId.value = null
+  overrideTotal.value = null // Reset override
+
+  // Dọn dẹp storage kỹ hơn
+  try {
+    sessionStorage.removeItem('activePaymentOrderId_moving')
+    sessionStorage.removeItem('lastDistanceMoving')
+    sessionStorage.removeItem('lastTotalPriceMoving')
+  } catch (e) {}
+}
+
+const restorePaymentState = async () => {
+  const savedOrderId = sessionStorage.getItem('activePaymentOrderId_moving')
+  if (!savedOrderId) return
+
+  try {
+    const { data, error } = await supabase.from('orders').select('id,status,total_price').eq('id', savedOrderId).single()
+    if (error || !data) {
+      sessionStorage.removeItem('activePaymentOrderId_moving')
+      return
+    }
+
+    if (data.status === 'waiting_payment') {
+      activeQRId.value = savedOrderId
+      isShowQR.value = true
+      currentStep.value = 3
+      // Restore last calculated distance/price
+      try {
+        const last = sessionStorage.getItem('lastDistanceMoving')
+        if (last) {
+          const v = parseFloat(last)
+          if (!isNaN(v) && v > 0) distance.value = v
+        }
+      } catch (e) {}
+
+      // If DB has total_price, use it
+      if (data.total_price) {
+        try { overrideTotal.value = Number(data.total_price) } catch (e) {}
+      } else {
+        try {
+          const lastTotal = sessionStorage.getItem('lastTotalPriceMoving')
+          if (lastTotal) overrideTotal.value = Number(lastTotal)
+        } catch (e) {}
+      }
+
+      listenForPaymentConfirmation(savedOrderId)
+    } else {
+      // Nếu trạng thái không phải waiting (ví dụ đã processing/cancelled) thì bỏ qua
+      sessionStorage.removeItem('activePaymentOrderId_moving')
+    }
+  } catch (e) {
+    console.error('Error restoring moving payment state', e)
+    sessionStorage.removeItem('activePaymentOrderId_moving')
+  }
+}
+
 // --- 6. LOGIC TÍNH GIÁ ---
 const totalPrice = computed(() => {
   if (!distance.value) return 0
@@ -497,6 +572,9 @@ const totalPrice = computed(() => {
   if (!form.value.hasElevator) total += 200000
   return Math.round(total)
 })
+
+// Computed total to show in QR
+const totalToShow = computed(() => (overrideTotal.value ?? totalPrice.value))
 
 watch(currentStep, async (v) => {
   if (v === 3) {
@@ -541,7 +619,7 @@ const handleSubmit = async () => {
           pickup_address: form.value.pickupAddress,
           dropoff_address: form.value.dropoffAddress,
           total_price: totalPrice.value,
-          status: 'waiting_payment', // <--- QUAN TRỌNG
+          status: 'waiting_payment',
           sender_name: form.value.senderName,
           sender_phone: form.value.senderPhone,
           receiver_name: form.value.receiverName,
@@ -554,6 +632,10 @@ const handleSubmit = async () => {
         
         activeQRId.value = data.id
         isShowQR.value = true
+        try {
+          sessionStorage.setItem('activePaymentOrderId_moving', data.id)
+        } catch (e) {}
+        listenForPaymentConfirmation(data.id)
     } catch (e: any) {
         alert('Lỗi: ' + e.message)
     } finally {
@@ -571,11 +653,7 @@ const handleSubmit = async () => {
             .eq('id', activeQRId.value)
           
           if (error) throw error
-          
-          // Success
-          isShowQR.value = false
-          activeQRId.value = null
-          currentStep.value = 4
+          finishOrder()
       } catch (e: any) {
           alert('Lỗi cập nhật: ' + e.message)
       } finally {
@@ -622,7 +700,16 @@ const handleSubmit = async () => {
 
     if (error) throw error
 
+    // --- SỬA LOGIC KHI COD THÀNH CÔNG ---
+    // Xóa sạch thông tin cũ để không dính cache
     isShowQR.value = false
+    activeQRId.value = null
+    try {
+        sessionStorage.removeItem('activePaymentOrderId_moving')
+        sessionStorage.removeItem('lastDistanceMoving')
+        sessionStorage.removeItem('lastTotalPriceMoving')
+    } catch (e) {}
+
     currentStep.value = 4
   } catch (error: any) {
     console.error(error)
@@ -632,10 +719,10 @@ const handleSubmit = async () => {
 }
 
 const cancelQR = async () => {
-  // Nếu huỷ khi đang thanh toán online -> Huỷ đơn waiting_payment
   if (activeQRId.value) {
       await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
       activeQRId.value = null
+      try { sessionStorage.removeItem('activePaymentOrderId_moving') } catch (e) {}
   }
   isShowQR.value = false
   nextTick(() => {
@@ -646,17 +733,40 @@ const cancelQR = async () => {
   })
 }
 
+const createNewOrder = async () => {
+  if (qrSubscription) supabase.removeChannel(qrSubscription)
+
+  if (activeQRId.value) {
+    try {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', activeQRId.value)
+    } catch (e) {}
+    activeQRId.value = null
+  }
+
+  // Clear persisted payment
+  try {
+    sessionStorage.removeItem('activePaymentOrderId_moving')
+    sessionStorage.removeItem('lastDistanceMoving')
+    sessionStorage.removeItem('lastTotalPriceMoving')
+  } catch (e) {}
+
+  resetState() // Gọi hàm reset sạch sẽ
+  
+  isShowQR.value = false
+  currentStep.value = 1
+  distance.value = 0
+}
+
 const goOrderList = async () => {
   isLoadingPage.value = true
+  resetState() // Reset trước khi đi
   await new Promise((resolve) => setTimeout(resolve, 300))
-  // Reset trước khi chuyển trang
-  resetState()
-  router.push('/dashboard/order-list')
+  await router.push('/dashboard/order-list')
 }
 </script>
 
 <template>
-  <main class="flex-1 md:ml-64 p-6 lg:p-10 bg-gray-50 min-h-screen flex flex-col">
+  <main class="flex-1 md:ml-64 p-6 lg:p-10 bg-gray-50 dark:bg-slate-900 min-h-screen flex flex-col transition-colors duration-300">
     <header class="mb-8">
       <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
         <Home class="w-6 h-6 text-emerald-600" /> Chuyển nhà Trọn gói
@@ -666,9 +776,9 @@ const goOrderList = async () => {
 
     <div class="mb-8 mx-auto w-full max-w-3xl">
       <div class="flex items-center justify-between relative">
-        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10"></div>
+        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 dark:bg-slate-700 -z-10"></div>
         <div
-          class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 transition-all duration-300 -z-10"
+          class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 dark:bg-emerald-400 transition-all duration-300 -z-10"
           :style="{ width: ((currentStep - 1) / 3) * 100 + '%' }"
         ></div>
         <div
@@ -677,21 +787,21 @@ const goOrderList = async () => {
           :class="[
             'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors border-4',
             currentStep >= step
-              ? 'bg-emerald-600 border-emerald-100 text-white'
-              : 'bg-white border-gray-200 text-gray-400',
+              ? 'bg-emerald-600 dark:bg-emerald-500 border-emerald-100 dark:border-emerald-700 text-white'
+              : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-400 dark:text-slate-500',
           ]"
         >
           {{ step }}
         </div>
       </div>
-      <div class="flex justify-between mt-2 text-xs font-medium text-slate-500">
+      <div class="flex justify-between mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
         <span>Liên lạc</span><span>Đồ đạc</span><span>Lộ trình</span><span>Hoàn tất</span>
       </div>
     </div>
 
     <div class="flex-1 flex flex-col max-w-3xl mx-auto w-full">
       <div
-        class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:p-8 flex-1 flex flex-col"
+        class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 lg:p-8 flex-1 flex flex-col"
       >
         <div v-if="currentStep === 1" class="space-y-8 animate-fade-in">
           <div class="flex items-center justify-between border-b border-gray-100 pb-4">
@@ -751,32 +861,32 @@ const goOrderList = async () => {
             </div>
             <div class="space-y-5">
               <div
-                class="flex items-center gap-2 text-orange-500 font-bold text-sm uppercase tracking-wider"
+                class="flex items-center gap-2 text-orange-500 dark:text-orange-400 font-bold text-sm uppercase tracking-wider"
               >
-                <div class="w-2 h-2 rounded-full bg-orange-500"></div>
+                <div class="w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400"></div>
                 Tại điểm đến (Nhà mới)
               </div>
               <div class="space-y-4">
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                  <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1"
                     >Họ tên <span class="text-red-500">*</span></label
                   >
                   <input
                     v-model="form.receiverName"
                     @focus="clearError('receiverName')"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 dark:bg-slate-700 border rounded-xl focus:outline-none transition-all text-slate-800 dark:text-slate-100',
                       errors.receiverName
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-orange-500',
+                        ? 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-gray-200 dark:border-slate-700 focus:border-orange-500 dark:focus:border-orange-400',
                     ]"
                   />
-                  <p v-if="errors.receiverName" class="text-red-500 text-xs ml-1">
+                  <p v-if="errors.receiverName" class="text-red-500 dark:text-red-400 text-xs ml-1">
                     {{ errors.receiverName }}
                   </p>
                 </div>
                 <div class="space-y-1">
-                  <label class="text-xs font-semibold text-slate-500 ml-1"
+                  <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1"
                     >SĐT <span class="text-red-500">*</span></label
                   >
                   <input
@@ -785,13 +895,13 @@ const goOrderList = async () => {
                     maxlength="10"
                     @focus="clearError('receiverPhone')"
                     :class="[
-                      'w-full pl-3 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none transition-all',
+                      'w-full pl-3 pr-4 py-3 bg-gray-50 dark:bg-slate-700 border rounded-xl focus:outline-none transition-all text-slate-800 dark:text-slate-100',
                       errors.receiverPhone
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-orange-500',
+                        ? 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-gray-200 dark:border-slate-700 focus:border-orange-500 dark:focus:border-orange-400',
                     ]"
                   />
-                  <p v-if="errors.receiverPhone" class="text-red-500 text-xs ml-1">
+                  <p v-if="errors.receiverPhone" class="text-red-500 dark:text-red-400 text-xs ml-1">
                     {{ errors.receiverPhone }}
                   </p>
                 </div>
@@ -801,20 +911,20 @@ const goOrderList = async () => {
         </div>
 
         <div v-else-if="currentStep === 2" class="space-y-8 animate-fade-in">
-          <div class="flex items-center justify-between border-b border-gray-100 pb-4">
-            <h3 class="text-lg font-bold text-slate-800">Thông tin đồ đạc & Nhà ở</h3>
-            <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
+          <div class="flex items-center justify-between border-b border-gray-100 dark:border-slate-700 pb-4">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Thông tin đồ đạc & Nhà ở</h3>
+            <span class="text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-md"
               >Bước 2/4</span
             >
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-4">
-              <label class="text-sm font-bold text-slate-700 block">Đặc điểm nơi chuyển đi</label>
+              <label class="text-sm font-bold text-slate-700 dark:text-slate-300 block">Đặc điểm nơi chuyển đi</label>
               <div class="grid grid-cols-1 gap-3">
                 <select
                   v-model="form.houseType"
-                  class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none"
+                  class="w-full p-3 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-700 rounded-xl focus:border-emerald-500 dark:focus:border-emerald-400 outline-none text-slate-800 dark:text-slate-100"
                 >
                   <option value="apartment">Chung cư / Tập thể</option>
                   <option value="alley">Nhà trong ngõ nhỏ (Xe tải khó vào)</option>
@@ -848,8 +958,8 @@ const goOrderList = async () => {
           </div>
 
           <div>
-            <h4 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-              <Sofa class="w-4 h-4 text-emerald-600" /> Chọn đồ đạc cồng kềnh (Để ước lượng xe)
+            <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+              <Sofa class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Chọn đồ đạc cồng kềnh (Để ước lượng xe)
               <span class="text-red-500">*</span>
             </h4>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -860,40 +970,40 @@ const goOrderList = async () => {
                 :class="[
                   'p-3 rounded-xl border text-sm font-medium transition flex flex-col items-center justify-center gap-2 text-center h-24',
                   form.items.includes(item)
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-500'
-                    : 'border-gray-200 hover:border-emerald-300 text-slate-600 bg-white hover:bg-gray-50',
+                    ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 shadow-sm ring-1 ring-emerald-500 dark:ring-emerald-400'
+                    : 'border-gray-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-600 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-700 hover:bg-gray-50 dark:hover:bg-slate-600',
                 ]"
               >
-                <CheckSquare v-if="form.items.includes(item)" class="w-5 h-5 text-emerald-500" />
+                <CheckSquare v-if="form.items.includes(item)" class="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
                 <span v-else class="w-5 h-5 block"></span>
                 {{ item }}
               </button>
             </div>
-            <p v-if="errors.items" class="text-red-500 text-xs mt-2">{{ errors.items }}</p>
+            <p v-if="errors.items" class="text-red-500 dark:text-red-400 text-xs mt-2">{{ errors.items }}</p>
           </div>
         </div>
 
         <div v-else-if="currentStep === 3" class="space-y-6 flex flex-col flex-1 animate-fade-in">
           <template v-if="!isShowQR">
-            <div class="flex items-center justify-between border-b border-gray-100 pb-4">
-              <h3 class="text-lg font-bold text-slate-800">Lộ trình & Báo giá</h3>
-              <span class="text-xs font-medium bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md"
+            <div class="flex items-center justify-between border-b border-gray-100 dark:border-slate-700 pb-4">
+              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Lộ trình & Báo giá</h3>
+              <span class="text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-md"
                 >Bước 3/4</span
               >
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div class="space-y-1 relative z-[1001]">
-                <label class="text-xs font-bold text-emerald-600 uppercase ml-1"
+                <label class="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase ml-1"
                   >Địa chỉ nhà cũ</label
                 >
                 <div class="relative group">
-                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-emerald-600 z-10" />
+                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-emerald-600 dark:text-emerald-400 z-10" />
                   <input
                     v-model="pickupQuery"
                     type="text"
                     placeholder="Nhập địa chỉ..."
-                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-emerald-500 outline-none shadow-sm"
+                    class="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl focus:border-emerald-500 dark:focus:border-emerald-400 outline-none shadow-sm text-slate-800 dark:text-slate-100"
                   />
                   <div
                     v-if="isSearchingPickup"
@@ -902,13 +1012,13 @@ const goOrderList = async () => {
                 </div>
                 <div
                   v-if="pickupSuggestions.length > 0"
-                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                  class="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
                 >
                   <div
                     v-for="(item, index) in pickupSuggestions"
                     :key="index"
                     @click="selectAddress(item, 'pickup')"
-                    class="p-3 hover:bg-emerald-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                    class="p-3 hover:bg-emerald-50 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-700 dark:text-slate-300 border-b border-gray-50 dark:border-slate-700 flex flex-col"
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
@@ -919,16 +1029,16 @@ const goOrderList = async () => {
               </div>
 
               <div class="space-y-1 relative z-[1000]">
-                <label class="text-xs font-bold text-orange-500 uppercase ml-1"
+                <label class="text-xs font-bold text-orange-500 dark:text-orange-400 uppercase ml-1"
                   >Địa chỉ nhà mới</label
                 >
                 <div class="relative group">
-                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-orange-500 z-10" />
+                  <MapPin class="absolute left-3 top-3 w-5 h-5 text-orange-500 dark:text-orange-400 z-10" />
                   <input
                     v-model="dropoffQuery"
                     type="text"
                     placeholder="Nhập địa chỉ..."
-                    class="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:border-orange-500 outline-none shadow-sm"
+                    class="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl focus:border-orange-500 dark:focus:border-orange-400 outline-none shadow-sm text-slate-800 dark:text-slate-100"
                   />
                   <div
                     v-if="isSearchingDropoff"
@@ -937,13 +1047,13 @@ const goOrderList = async () => {
                 </div>
                 <div
                   v-if="dropoffSuggestions.length > 0"
-                  class="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
+                  class="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto z-50"
                 >
                   <div
                     v-for="(item, index) in dropoffSuggestions"
                     :key="index"
                     @click="selectAddress(item, 'dropoff')"
-                    class="p-3 hover:bg-orange-50 cursor-pointer text-sm text-slate-700 border-b border-gray-50 flex flex-col"
+                    class="p-3 hover:bg-orange-50 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-700 dark:text-slate-300 border-b border-gray-50 dark:border-slate-700 flex flex-col"
                   >
                     <span class="font-bold text-slate-900">{{
                       (item.display_name || '').split(',')[0]
@@ -955,16 +1065,16 @@ const goOrderList = async () => {
             </div>
 
             <div
-              class="relative rounded-2xl overflow-hidden border border-gray-200 h-64 md:h-80 bg-slate-100 shadow-inner z-0"
+              class="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-700 h-64 md:h-80 bg-slate-100 dark:bg-slate-700 shadow-inner z-0"
             >
               <div id="mapMoving" class="w-full h-full z-0"></div>
               <div
                 v-if="!distance"
-                class="absolute inset-0 bg-white/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
+                class="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md flex flex-col items-center justify-center z-[500] p-4 text-center"
               >
                 <button
                   @click="calculateRoute"
-                  class="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-full font-bold hover:scale-105 shadow-xl transition-all"
+                  class="flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-8 py-3 rounded-full font-bold hover:scale-105 dark:hover:bg-slate-600 shadow-xl transition-all"
                 >
                   <Calculator v-if="!isCalculating" class="w-4 h-4" />
                   {{ isCalculating ? 'Đang tính toán...' : 'Xem lộ trình & Báo giá' }}
@@ -974,23 +1084,23 @@ const goOrderList = async () => {
 
             <div v-if="distance > 0" class="space-y-6">
               <div
-                class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-100 animate-fade-in"
+                class="bg-gradient-to-br from-emerald-50 dark:from-emerald-900/30 to-teal-50 dark:to-teal-900/30 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-800 animate-fade-in"
               >
                 <div
-                  class="flex justify-between items-end mb-4 border-b border-emerald-200/50 pb-4"
+                  class="flex justify-between items-end mb-4 border-b border-emerald-200/50 dark:border-emerald-700/50 pb-4"
                 >
                   <div>
-                    <p class="text-sm text-emerald-700">Khoảng cách</p>
-                    <p class="text-2xl font-bold text-emerald-900">{{ distance }} km</p>
+                    <p class="text-sm text-emerald-700 dark:text-emerald-300">Khoảng cách</p>
+                    <p class="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{{ distance }} km</p>
                   </div>
                   <div class="text-right">
-                    <p class="text-sm text-emerald-700">Trọn gói (Dự kiến)</p>
-                    <p class="text-3xl font-extrabold text-emerald-600">
-                      {{ totalPrice.toLocaleString('vi-VN') }}đ
+                    <p class="text-sm text-emerald-700 dark:text-emerald-300">Trọn gói (Dự kiến)</p>
+                    <p class="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                      {{ totalToShow.toLocaleString('vi-VN') }}đ
                     </p>
                   </div>
                 </div>
-                <div class="space-y-1.5 text-xs text-emerald-800">
+                <div class="space-y-1.5 text-xs text-emerald-800 dark:text-emerald-200">
                   <div class="flex justify-between">
                     <span>Xe tải & Tài xế (Mở cửa):</span><span class="font-medium">350.000đ</span>
                   </div>
@@ -1014,7 +1124,7 @@ const goOrderList = async () => {
               </div>
 
               <div>
-                <h4 class="font-bold text-slate-800 mb-3 text-sm uppercase">
+                <h4 class="font-bold text-slate-800 dark:text-slate-100 mb-3 text-sm uppercase">
                   Phương thức thanh toán
                 </h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1023,12 +1133,12 @@ const goOrderList = async () => {
                     :class="[
                       'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
                       form.paymentMethod === 'cod'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
-                        : 'border-gray-200 hover:bg-gray-50 text-slate-600',
+                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500 dark:ring-emerald-400'
+                        : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400',
                     ]"
                   >
-                    <div class="p-2 bg-white rounded-full border border-gray-100 shadow-sm">
-                      <Wallet class="w-5 h-5 text-emerald-600" />
+                    <div class="p-2 bg-white dark:bg-slate-700 rounded-full border border-gray-100 dark:border-slate-600 shadow-sm">
+                      <Wallet class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div>
                       <p class="font-bold text-sm">Tiền mặt</p>
@@ -1036,7 +1146,7 @@ const goOrderList = async () => {
                     </div>
                     <CheckCircle
                       v-if="form.paymentMethod === 'cod'"
-                      class="ml-auto w-5 h-5 text-emerald-600"
+                      class="ml-auto w-5 h-5 text-emerald-600 dark:text-emerald-400"
                     />
                   </div>
                   <div
@@ -1044,8 +1154,8 @@ const goOrderList = async () => {
                     :class="[
                       'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
                       form.paymentMethod === 'online'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
-                        : 'border-gray-200 hover:bg-gray-50 text-slate-600',
+                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500 dark:ring-emerald-400'
+                        : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400',
                     ]"
                   >
                     <div class="p-2 bg-white rounded-full border border-gray-100 shadow-sm">
@@ -1067,54 +1177,54 @@ const goOrderList = async () => {
 
           <template v-else>
             <div class="flex flex-col items-center justify-center text-center animate-fade-in py-6">
-              <h3 class="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
-                <QrCode class="w-6 h-6 text-emerald-600" /> Quét mã để đặt cọc
+              <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                <QrCode class="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Quét mã để đặt cọc
               </h3>
-              <p class="text-slate-500 mb-6 max-w-sm">
+              <p class="text-slate-500 dark:text-slate-400 mb-6 max-w-sm">
                 Dịch vụ chuyển nhà yêu cầu thanh toán trước hoặc đặt cọc để giữ xe.
               </p>
-              <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-lg mb-6 relative">
+              <div class="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-lg mb-6 relative">
                 <img
-                  :src="`https://img.vietqr.io/image/MB-0333053420-compact.jpg?amount=${totalPrice}&addInfo=MOVING ${form.senderPhone}`"
+                  :src="`https://img.vietqr.io/image/MB-0333053420-compact.jpg?amount=${totalToShow}&addInfo=MOVING ${form.senderPhone}`"
                   alt="QR Code"
                   class="w-64 h-64 object-contain"
                 />
               </div>
 
               <div
-                class="bg-slate-50 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100"
+                class="bg-slate-50 dark:bg-slate-700 rounded-xl p-4 w-full max-w-md text-left space-y-3 mb-6 border border-slate-100 dark:border-slate-600"
               >
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Ngân hàng</span
-                  ><span class="font-bold text-slate-800">MB Bank (Quân Đội)</span>
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Ngân hàng</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100">MB Bank (Quân Đội)</span>
                 </div>
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tài khoản</span
-                  ><span class="font-bold text-slate-800">0333053420</span>
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Số tài khoản</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100">0333053420</span>
                 </div>
-                <div class="flex justify-between border-b border-slate-200 pb-2">
-                  <span class="text-slate-500 text-sm">Số tiền</span
-                  ><span class="font-bold text-emerald-600 text-lg"
-                    >{{ totalPrice.toLocaleString() }}đ</span
+                <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Số tiền</span
+                  ><span class="font-bold text-emerald-600 dark:text-emerald-400 text-lg"
+                    >{{ totalToShow.toLocaleString() }}đ</span
                   >
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-slate-500 text-sm">Nội dung</span
-                  ><span class="font-bold text-slate-800">MOVING {{ form.senderPhone }}</span>
+                  <span class="text-slate-500 dark:text-slate-400 text-sm">Nội dung</span
+                  ><span class="font-bold text-slate-800 dark:text-slate-100">MOVING {{ form.senderPhone }}</span>
                 </div>
               </div>
               <div class="flex gap-3">
                 <button
                   @click="cancelQR"
-                  class="px-6 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition"
+                  class="px-6 py-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium transition"
                 >
                   Hủy bỏ
                 </button>
                 <button
-                  @click="handleSubmit"
-                  class="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold transition shadow-lg"
+                  @click="createNewOrder"
+                  class="flex items-center gap-2 px-6 py-2 bg-emerald-600 dark:bg-emerald-500 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg font-bold transition shadow-lg"
                 >
-                  <CheckCircle class="w-4 h-4" /> Đã thanh toán
+                  <Package class="w-4 h-4" /> Tạo đơn mới
                 </button>
               </div>
             </div>
@@ -1125,30 +1235,30 @@ const goOrderList = async () => {
           v-else-if="currentStep === 4"
           class="flex flex-col items-center justify-center text-center py-10 animate-fade-in"
         >
-          <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
-            <Truck class="w-10 h-10 text-emerald-600" />
+          <div class="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-6">
+            <Truck class="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h3 class="text-2xl font-bold text-slate-900 mb-2">Đã đặt lịch chuyển nhà!</h3>
-          <p class="text-slate-500 mb-8 max-w-md">
+          <h3 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Đã đặt lịch chuyển nhà!</h3>
+          <p class="text-slate-500 dark:text-slate-400 mb-8 max-w-md">
             Chúng tôi đã nhận được yêu cầu. Đội ngũ khảo sát & vận chuyển sẽ gọi cho bạn trong ít
             phút để xác nhận.
           </p>
 
           <div
-            class="bg-slate-50 p-6 rounded-2xl w-full max-w-md mb-8 border border-slate-100 text-left space-y-3"
+            class="bg-slate-50 dark:bg-slate-700 p-6 rounded-2xl w-full max-w-md mb-8 border border-slate-100 dark:border-slate-600 text-left space-y-3"
           >
-            <h4 class="font-bold text-slate-800 border-b pb-2 mb-2">Thông tin đơn hàng</h4>
+            <h4 class="font-bold text-slate-800 dark:text-slate-100 border-b dark:border-slate-600 pb-2 mb-2">Thông tin đơn hàng</h4>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Người liên hệ:</span
-              ><span class="font-medium text-slate-800">{{ form.senderName }}</span>
+              <span class="text-slate-500 dark:text-slate-400">Người liên hệ:</span
+              ><span class="font-medium text-slate-800 dark:text-slate-200">{{ form.senderName }}</span>
             </div>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Loại xe:</span
-              ><span class="font-medium text-slate-800">Xe tải chuyên dụng</span>
+              <span class="text-slate-500 dark:text-slate-400">Loại xe:</span
+              ><span class="font-medium text-slate-800 dark:text-slate-200">Xe tải chuyên dụng</span>
             </div>
             <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Tổng chi phí:</span
-              ><span class="font-bold text-emerald-600">{{ totalPrice.toLocaleString() }}đ</span>
+              <span class="text-slate-500 dark:text-slate-400">Tổng chi phí:</span
+              ><span class="font-bold text-emerald-600 dark:text-emerald-400">{{ totalToShow.toLocaleString() }}đ</span>
             </div>
           </div>
 
@@ -1192,18 +1302,6 @@ const goOrderList = async () => {
       </div>
     </div>
   </main>
-
-  <Transition name="fade">
-    <div
-      v-if="isLoadingPage"
-      class="fixed inset-0 z-[9999] bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center"
-    >
-      <div
-        class="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"
-      ></div>
-      <p class="mt-4 text-slate-600 font-medium">Đang xử lý...</p>
-    </div>
-  </Transition>
 </template>
 
 <style scoped>

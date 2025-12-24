@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '@/supabase'
+import { setTheme, getTheme } from '@/theme'
 import {
   Settings,
   Lock,
@@ -18,7 +19,7 @@ import {
 
 const router = useRouter()
 const route = useRoute()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 
 const loading = ref(true)
 const savingPassword = ref(false)
@@ -79,16 +80,14 @@ const userSettings = ref({
   promo_notifications: false,
   email_notifications: true,
   sms_notifications: false,
-  preferred_language: 'vi',
   theme: 'light',
 })
 
-// --- HÀM XỬ LÝ THEME ---
-const applyTheme = (theme: string) => {
-  if (theme === 'dark') document.documentElement.classList.add('dark')
-  else document.documentElement.classList.remove('dark')
-  localStorage.setItem('theme', theme)
-}
+// Use global theme helpers
+// initialize from saved value
+const initialTheme = getTheme()
+if (initialTheme) userSettings.value.theme = initialTheme
+setTheme(initialTheme)
 
 // Lifecycle
 onMounted(async () => {
@@ -97,6 +96,11 @@ onMounted(async () => {
     activeTab.value = tabParam
   }
   await fetchUserSettings()
+})
+
+// Áp dụng theme ngay khi user thay đổi trong UI (toggle)
+watch(() => userSettings.value.theme, (v) => {
+  if (v) setTheme(v)
 })
 
 watch(
@@ -123,12 +127,10 @@ const fetchUserSettings = async () => {
       promo_notifications: metadata.setting_promo_notifications ?? false,
       email_notifications: metadata.setting_email_notifications ?? true,
       sms_notifications: metadata.setting_sms_notifications ?? false,
-      preferred_language: metadata.setting_language || 'vi',
       theme: metadata.setting_theme || 'light',
     }
 
-    locale.value = userSettings.value.preferred_language
-    applyTheme(userSettings.value.theme)
+    setTheme(userSettings.value.theme)
   } catch (error) {
     console.error('Error:', error)
   } finally {
@@ -197,15 +199,13 @@ const updateGeneralSettings = async () => {
         setting_promo_notifications: userSettings.value.promo_notifications,
         setting_email_notifications: userSettings.value.email_notifications,
         setting_sms_notifications: userSettings.value.sms_notifications,
-        setting_language: userSettings.value.preferred_language,
         setting_theme: userSettings.value.theme,
       },
     })
 
     if (error) throw error
 
-    locale.value = userSettings.value.preferred_language
-    applyTheme(userSettings.value.theme)
+    setTheme(userSettings.value.theme)
 
     showToast(t('settings.general.saving').replace('...', '') + ' thành công!', 'success')
   } catch (error: any) {
@@ -517,29 +517,17 @@ const handleLogout = async () => {
               </h3>
               <form @submit.prevent="updateGeneralSettings" class="space-y-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div class="space-y-2">
-                    <label class="text-sm font-medium text-slate-700 dark:text-slate-300">{{
-                      $t('settings.general.language')
-                    }}</label>
-                    <select
-                      v-model="userSettings.preferred_language"
-                      class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                    >
-                      <option value="vi">Tiếng Việt</option>
-                      <option value="en">English</option>
-                    </select>
-                  </div>
-                  <div class="space-y-2">
+                  <div class="space-y-2 md:col-span-1">
                     <label class="text-sm font-medium text-slate-700 dark:text-slate-300">{{
                       $t('settings.general.theme')
                     }}</label>
-                    <select
-                      v-model="userSettings.theme"
-                      class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                    >
-                      <option value="light">{{ $t('settings.general.light') }}</option>
-                      <option value="dark">{{ $t('settings.general.dark') }}</option>
-                    </select>
+                    <div class="flex items-center gap-3">
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only" v-model="userSettings.theme" :true-value="'dark'" :false-value="'light'" />
+                        <div class="w-11 h-6 bg-gray-200 dark:bg-slate-600 rounded-full peer-checked:bg-emerald-500 relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all" :class="userSettings.theme === 'dark' ? 'bg-emerald-500' : ''"></div>
+                      </label>
+                      <span class="text-sm text-slate-700 dark:text-slate-300">{{ userSettings.theme === 'dark' ? $t('settings.general.dark') : $t('settings.general.light') }}</span>
+                    </div>
                   </div>
                 </div>
                 <div class="pt-4 flex justify-end">

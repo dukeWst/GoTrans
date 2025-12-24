@@ -355,21 +355,21 @@ const closeDetails = () => {
 </script>
 
 <template>
-  <main class="flex-1 md:ml-64 p-4 lg:p-10 bg-slate-50 min-h-screen relative">
+  <main class="flex-1 md:ml-64 p-4 lg:p-10 bg-slate-50 dark:bg-slate-900 min-h-screen relative transition-colors duration-300">
     <header
       class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
     >
       <div>
-        <h2 class="text-2xl font-bold text-slate-900">Danh sách đơn hàng</h2>
-        <p class="text-slate-500 mt-1">Quản lý các đơn hàng vận chuyển của bạn.</p>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Danh sách đơn hàng</h2>
+        <p class="text-slate-500 dark:text-slate-400 mt-1">Quản lý các đơn hàng vận chuyển của bạn.</p>
       </div>
       <div class="relative w-full md:w-auto">
-        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500" />
         <input
           v-model="searchQuery"
           type="text"
           placeholder="Tìm mã đơn, tên, địa chỉ..."
-          class="w-full md:w-64 pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white shadow-sm"
+          class="w-full md:w-64 pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-800 dark:text-slate-100 shadow-sm"
         />
       </div>
     </header>
@@ -383,8 +383,8 @@ const closeDetails = () => {
           class="px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200 border"
           :class="
             activeFilter === tab.id
-              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-200'
-              : 'bg-white text-slate-600 border-gray-200 hover:bg-gray-50'
+              ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md shadow-emerald-200 dark:shadow-emerald-900/50'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'
           "
         >
           {{ tab.label }}
@@ -393,19 +393,19 @@ const closeDetails = () => {
     </div>
 
     <div v-if="loading" class="flex flex-col items-center justify-center py-20">
-      <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-4"></div>
-      <p class="text-slate-400 text-sm">Đang tải dữ liệu...</p>
+      <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 dark:border-emerald-400 mb-4"></div>
+      <p class="text-slate-400 dark:text-slate-500 text-sm">Đang tải dữ liệu...</p>
     </div>
 
     <div
       v-else-if="filteredOrders.length === 0"
-      class="flex flex-col items-center justify-center py-20 text-center bg-white rounded-3xl border border-dashed border-gray-300"
+      class="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-slate-800 rounded-3xl border border-dashed border-gray-300 dark:border-slate-700"
     >
-      <div class="bg-gray-50 p-4 rounded-full mb-4">
-        <Package class="w-10 h-10 text-gray-400" />
+      <div class="bg-gray-50 dark:bg-slate-700 p-4 rounded-full mb-4">
+        <Package class="w-10 h-10 text-gray-400 dark:text-slate-500" />
       </div>
-      <h3 class="text-lg font-bold text-slate-900">Không tìm thấy đơn hàng</h3>
-      <p class="text-slate-500 max-w-xs mx-auto mt-2">
+      <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">Không tìm thấy đơn hàng</h3>
+      <p class="text-slate-500 dark:text-slate-400 max-w-xs mx-auto mt-2">
         Bạn chưa có đơn hàng nào hoặc không tìm thấy kết quả phù hợp.
       </p>
     </div>
@@ -415,7 +415,7 @@ const closeDetails = () => {
         v-for="item in filteredOrders"
         :key="item.id"
         @click="openDetails(item)"
-        class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+        class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md dark:shadow-slate-900/50 transition-shadow group cursor-pointer"
       >
         <div class="flex justify-between items-start mb-4">
           <div class="flex items-center gap-3">
@@ -468,17 +468,17 @@ const closeDetails = () => {
           </div>
         </div>
 
-        <div class="flex items-center justify-between pt-4 mt-2 border-t border-gray-100">
-          <div class="flex items-center gap-4 text-xs text-slate-500">
+        <div class="flex items-center justify-between pt-4 mt-2 border-t border-gray-100 dark:border-slate-700">
+          <div class="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
             <div class="flex items-center gap-1">
               <Calendar class="w-3.5 h-3.5" /> {{ item.date }}
             </div>
             <div class="flex items-center gap-1"><Clock class="w-3.5 h-3.5" /> {{ item.time }}</div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="font-bold text-emerald-600">{{ formatCurrency(item.price) }}</span>
+            <span class="font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.price) }}</span>
             <ChevronRight
-              class="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform"
+              class="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:translate-x-1 transition-transform"
             />
           </div>
         </div>
@@ -489,31 +489,31 @@ const closeDetails = () => {
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeDetails"></div>
 
       <div
-        class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl relative z-10 overflow-hidden max-h-[90vh] flex flex-col animate-fade-in-up"
+        class="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl relative z-10 overflow-hidden max-h-[90vh] flex flex-col animate-fade-in-up"
       >
-        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+        <div class="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700">
           <div>
-            <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               Chi tiết đơn hàng
-              <span class="text-sm font-normal text-slate-500 font-mono"
+              <span class="text-sm font-normal text-slate-500 dark:text-slate-400 font-mono"
                 >#{{ selectedOrder.displayId }}</span
               >
             </h3>
-            <p class="text-sm text-slate-500 mt-1 flex items-center gap-2">
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
               Ngày tạo: {{ selectedOrder.date }} - {{ selectedOrder.time }}
             </p>
           </div>
           <button
             @click="closeDetails"
-            class="p-2 hover:bg-white rounded-full transition shadow-sm border border-transparent hover:border-gray-200"
+            class="p-2 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-full transition shadow-sm border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
           >
-            <X class="w-6 h-6 text-slate-500" />
+            <X class="w-6 h-6 text-slate-500 dark:text-slate-400" />
           </button>
         </div>
 
         <div class="p-6 overflow-y-auto space-y-6">
           <div
-            class="flex flex-col sm:flex-row gap-4 justify-between sm:items-center bg-emerald-50/50 p-4 rounded-xl border border-emerald-100"
+            class="flex flex-col sm:flex-row gap-4 justify-between sm:items-center bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800"
           >
             <div class="flex items-center gap-3">
               <span
@@ -522,30 +522,30 @@ const closeDetails = () => {
               >
                 {{ getStatusLabel(selectedOrder.status) }}
               </span>
-              <span class="text-sm text-emerald-800 font-medium">
+              <span class="text-sm text-emerald-800 dark:text-emerald-300 font-medium">
                 {{ selectedOrder.serviceType === 'delivery' ? 'Giao hàng nhanh' : 'Chuyển nhà' }}
               </span>
             </div>
             <div class="text-right">
-              <p class="text-xs text-slate-500 mb-1">Tổng thanh toán</p>
-              <p class="text-2xl font-extrabold text-emerald-600">
+              <p class="text-xs text-slate-500 dark:text-slate-400 mb-1">Tổng thanh toán</p>
+              <p class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
                 {{ formatCurrency(selectedOrder.price) }}
               </p>
             </div>
           </div>
 
           <div>
-            <h4 class="text-sm font-bold text-slate-900 uppercase mb-3 flex items-center gap-2">
-              <MapPin class="w-4 h-4 text-emerald-600" /> Lộ trình vận chuyển
+            <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase mb-3 flex items-center gap-2">
+              <MapPin class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Lộ trình vận chuyển
             </h4>
-            <div class="relative pl-6 border-l-2 border-gray-200 space-y-6 ml-2">
+            <div class="relative pl-6 border-l-2 border-gray-200 dark:border-slate-700 space-y-6 ml-2">
               <div class="relative">
                 <div
-                  class="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white border-4 border-emerald-500"
+                  class="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white dark:bg-slate-800 border-4 border-emerald-500 dark:border-emerald-400"
                 ></div>
-                <p class="text-xs font-bold text-emerald-600 mb-1">ĐIỂM LẤY HÀNG</p>
+                <p class="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">ĐIỂM LẤY HÀNG</p>
                 <p
-                  class="text-sm text-slate-800 font-medium bg-gray-50 p-3 rounded-lg border border-gray-100"
+                  class="text-sm text-slate-800 dark:text-slate-200 font-medium bg-gray-50 dark:bg-slate-700 p-3 rounded-lg border border-gray-100 dark:border-slate-600"
                 >
                   {{ selectedOrder.from }}
                 </p>
@@ -705,21 +705,22 @@ const closeDetails = () => {
           </div>
         </div>
 
-        <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-          <button
-            @click="closeDetails"
-            class="px-6 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-slate-700 hover:bg-gray-50 transition"
-          >
-            Đóng
-          </button>
-          <button
-            v-if="selectedOrder.status === 'processing'"
-            @click="requestCancel"
-            class="px-6 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-100 transition"
-          >
-            Hủy đơn hàng
-          </button>
-        </div>
+       <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+  <button
+    @click="closeDetails"
+    class="px-6 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-slate-700 hover:bg-gray-50 transition"
+  >
+    Đóng
+  </button>
+  
+  <button
+    v-if="['processing', 'shipping'].includes(selectedOrder.status)"
+    @click="requestCancel"
+    class="px-6 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-100 transition"
+  >
+    Hủy đơn hàng
+  </button>
+</div>
 
         <div
           v-if="showCancelConfirm"
