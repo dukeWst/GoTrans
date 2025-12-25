@@ -123,6 +123,9 @@ const resetState = () => {
   isCalculating.value = false
   isShowQR.value = false
   activeQRId.value = null
+  
+  // ---> THÊM DÒNG NÀY <---
+  isSubmitting.value = false 
 
   if (map) {
     map.remove()
