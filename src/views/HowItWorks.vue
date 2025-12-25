@@ -47,7 +47,7 @@
       <RouterLink to="/contact">
         <div class="mt-16">
         <button
-          class="px-8 py-3 bg-white text-emerald-600 rounded-xl font-bold hover:bg-emerald-50 transition shadow-lg"
+          class="px-8 py-3 bg-white text-emerald-600 rounded-xl font-bold hover:bg-emerald-50 shadow-lg active:scale-95 transition-all duration-300"
         >
           Đăng ký tư vấn ngay
         </button>

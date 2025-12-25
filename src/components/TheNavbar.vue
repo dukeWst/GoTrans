@@ -179,7 +179,7 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronDown } from 'lucide-vue-next'
 import { supabase } from '@/supabase'
-import logo from '../assets/logo.png'
+import logo from '../assets/Logo_.png'
 
 const router = useRouter()
 const serviceOpen = ref(false)

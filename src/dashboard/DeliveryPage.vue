@@ -133,8 +133,6 @@ const resetState = () => {
     markers = []
   }
 
-  // Reset form
-  // (Giữ lại thông tin người gửi nếu muốn, ở đây ta reset sạch trừ người gửi sẽ load lại từ profile)
   form.value.receiverName = ''
   form.value.receiverPhone = ''
   form.value.weight = 1

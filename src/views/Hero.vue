@@ -1,6 +1,6 @@
 <template>
   <section
-    class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-500 via-emerald-600 to-green-600 shadow-2xl text-white"
+    class="relative overflow-hidden rounded-b-4xl py-12 bg-gradient-to-br from-teal-500 via-emerald-600 to-green-600 shadow-2xl text-white"
   >
     <div
       class="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"
