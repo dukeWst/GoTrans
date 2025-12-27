@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import Logo from '@/assets/logo.vue'
+import Logo from '@/assets/Logo.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
